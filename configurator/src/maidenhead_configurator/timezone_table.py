@@ -17,6 +17,7 @@ class Transition:
 class TimezoneTable:
     zone_name: str
     generated_at: str
+    expires_at: str
     expiry_year: int
     initial_offset_seconds: int
     initial_abbreviation: str
@@ -79,6 +80,7 @@ def generate_timezone_table(
     return TimezoneTable(
         zone_name,
         start.isoformat(),
+        end.isoformat(),
         end.year,
         initial_offset,
         initial_abbreviation,

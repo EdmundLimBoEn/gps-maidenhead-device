@@ -13,7 +13,9 @@ def test_profile_round_trip(tmp_path) -> None:
     save_profile(original, path)
     loaded = load_profile(path)
     assert loaded.to_dict() == original.to_dict()
-    assert "coordinates" not in path.read_text()
+    serialized = path.read_text()
+    assert "coordinates" not in serialized
+    assert "timezone_table" not in serialized
 
 
 def test_unknown_profile_version_is_not_silently_migrated(tmp_path) -> None:

@@ -3,6 +3,7 @@
 #pragma once
 
 #include <optional>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -55,6 +56,8 @@ struct NmeaSentence {
     std::optional<Position> position{};
     std::optional<UtcTime> utc_time{};
     std::optional<UtcDate> utc_date{};
+    std::uint8_t fix_quality{0};
+    std::uint8_t satellites_used{0};
 };
 
 struct ParseResult {
@@ -73,6 +76,8 @@ struct CurrentFix {
     Position position{};
     UtcTime utc_time{};
     UtcDate utc_date{};
+    std::uint8_t fix_quality{0};
+    std::uint8_t satellites_used{0};
 };
 
 // Requires matching, receiver-valid RMC and GGA reports. It prevents a valid

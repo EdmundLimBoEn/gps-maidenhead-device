@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CERN-OHL-S-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="71mm" height="25mm" viewBox="0 0 71 25">
+  <title>Maidenhead Pocket Locator polycarbonate window cut profile</title>
+  <rect x="0.1" y="0.1" width="70.8" height="24.8" rx="1.5" ry="1.5"
+        fill="none" stroke="#000" stroke-width="0.2"/>
+</svg>

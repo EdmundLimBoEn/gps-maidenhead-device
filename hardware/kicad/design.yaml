@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: CERN-OHL-S-2.0
+# Connected Revision-A electrical contract. Purchased-part drawings and bench
+# results remain mandatory release gates.
+project: maidenhead-pocket-locator
+revision: A-electrical
+board:
+  width_mm: 81.0
+  height_mm: 37.0
+  layers: 2
+  thickness_mm: 1.6
+  stackup: "JLCPCB selected stack-up; recalculate GNSS CPWG before release"
+power_architecture:
+  charger_source: "BQ24074 OUT is the sole SYS_RAW source; BAT never bypasses OUT"
+  system_regulator: "TPS63802DLAR adjustable buck-boost, 3.3 V, 0.47 uH, 511k/91k feedback"
+  start_logic: "TPS63802 EN is diode-OR of USB VBUS and Q1 signal-PMOS output"
+  locate_start: "LOCATE_N pulls Q1 gate low through D3; Q2 holds it from GPIO4"
+  usb_idle: "VBUS forces 3V3 only; GPIO5 LCD_POWER_EN and GPIO18 GNSS_EN default low"
+  off_state: "TPS63802 shutdown; charger/protected cell and signal latch remain BAT-connected"
+nets:
+  power: [VBUS, BAT, SYS_RAW, PWR_EN, 3V3, 1V1, 3V3_GNSS, 5V_LCD, GND]
+  usb: [USB_DP_CONN, USB_DM_CONN, USB_DP_ESD, USB_DM_ESD, USB_DP, USB_DM, CC1, CC2]
+  control: [LOCATE_N, OFF_N, POWER_HOLD, LCD_POWER_EN, GNSS_EN, BAT_SENSE_EN, VBUS_PRESENT, CHG_N]
+  gnss: [GNSS_TX, GNSS_RX, GNSS_PPS, GNSS_RF_50R]
+  lcd: [LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7, LCD_BL_A, LCD_BL_K, BL_PWM]
+components:
+  - {ref: U1, mpn: RP2040, package: "QFN-56 7x7", role: MCU}
+  - {ref: U2, mpn: W25Q16JVUXIQ, package: "USON-8 2x3", role: boot_flash}
+  - {ref: U3, mpn: BQ24074RGTR, package: "VQFN-16 3x3", role: power_path_charger}
+  - {ref: U4, mpn: TPS63802DLAR, package: "VSON-HR-10 3x2", role: 3v3_buck_boost}
+  - {ref: U5, mpn: TPS61023DRLR, package: "SOT-563-6", role: lcd_boost}
+  - {ref: U6, mpn: SN74LVC8T245PWR, package: TSSOP-24, role: lcd_level_shift}
+  - {ref: U7, mpn: Ai-Thinker-GP-02, package: "castellated module; provisional footprint", role: GNSS}
+  - {ref: U8, mpn: TPS22916BYFPR, package: "DSBGA-4/engineering 6-pad land", role: gnss_load_switch}
+  - {ref: Q1, mpn: DMP3098L-7, role: signal_only_start_switch}
+  - {ref: Q2, mpn: DMN2050L-7, role: power_hold_gate_pull_down}
+  - {ref: Q3, mpn: DMN2050L-7, role: lcd_backlight_pwm}
+  - {ref: Q4, mpn: DMP3098L-7, role: battery_divider_high_side}
+  - {ref: Q5, mpn: DMN2050L-7, role: battery_divider_gate}
+  - {ref: J1, mpn: GCT_USB4105-GF-A, role: USB-C_device}
+  - {ref: J2, mpn: "B3B-PH-K-S(LF)(SN)", role: protected_cell_NTC}
+  - {ref: J3, mpn: "61301611121", role: lcd_header}
+  - {ref: J4, mpn: "20449-001E", role: GNSS_uFL}
+firmware_contract:
+  GPIO2: LOCATE_N
+  GPIO3: OFF_N
+  GPIO4: POWER_HOLD
+  GPIO5: LCD_POWER_EN
+  GPIO6: LCD_RS_3V3
+  GPIO7: LCD_E_3V3
+  GPIO8: LCD_D4_3V3
+  GPIO9: LCD_D5_3V3
+  GPIO10: LCD_D6_3V3
+  GPIO11: LCD_D7_3V3
+  GPIO12: BL_PWM
+  GPIO16: GNSS_RX
+  GPIO17: GNSS_TX
+  GPIO18: GNSS_EN
+  GPIO19: VBUS_PRESENT
+  GPIO20: CHG_N
+  GPIO21: BAT_SENSE_EN
+  GPIO26_ADC0: BAT_ADC
+release_blockers:
+  - "Verify every footprint and pad number against the ordered manufacturer drawing."
+  - "Replace/prove provisional GP-02 and TPS22916 land patterns before assembly release."
+  - "Calculate GNSS 50-ohm CPWG width/clearance from the exact ordered stack-up."
+  - "Run KiCad GUI ERC/DRC and archive zero-unreviewed-error reports."
+  - "Measure LCD current, charge/NTC, shutdown current, RF and thermal behavior."

@@ -38,14 +38,15 @@ class SimulatedTransport:
         if command == "get_info":
             return {"firmware_version": "0.1.0-sim", "hardware_revision": "sim"}
         if command == "get_config":
-            return deepcopy(self.config.to_dict())
+            return deepcopy(self.config.to_dict(include_timezone_table=True))
         if command == "validate_config":
-            DeviceConfig.from_dict(request["config"])
+            DeviceConfig.from_dict(request["config"]).validate_device_payload()
             return {"valid": True}
         if command == "set_config":
             candidate = DeviceConfig.from_dict(request["config"])
+            candidate.validate_device_payload()
             self.config = candidate
-            return deepcopy(self.config.to_dict())
+            return deepcopy(self.config.to_dict(include_timezone_table=True))
         if command == "get_diagnostics":
             return {
                 "config_crc_healthy": True,

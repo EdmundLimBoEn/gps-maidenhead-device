@@ -52,6 +52,10 @@ Update CheckSession::set_usb_present(bool present, std::uint64_t now_ms) {
     (void)now_ms;
     usb_present_ = present;
     Update update{};
+    if (usb_present_ && state_ == State::Off && !locate_down_) {
+        state_ = State::UsbIdle;
+        backlight_ = Backlight::Off;
+    }
     if (!usb_present_ && (state_ == State::UsbIdle || state_ == State::PressCheck) && !locate_down_) {
         enter_idle_or_off(update);
     }

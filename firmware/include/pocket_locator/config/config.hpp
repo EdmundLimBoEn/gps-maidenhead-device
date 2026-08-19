@@ -5,12 +5,23 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "pocket_locator/app/check_session.hpp"
+#include "pocket_locator/time/zone_table.hpp"
 
 namespace pocket_locator::config {
 
 constexpr std::uint32_t kCurrentSchemaVersion = 1;
+
+enum class DisplayBlockKind : std::uint8_t { Battery, Time, Date, Text, Space, Separator };
+enum class DateFormat : std::uint8_t { DdMm, MmDd, DdMmm, YyyyMmDd };
+
+struct DisplayBlock {
+    DisplayBlockKind kind{DisplayBlockKind::Text};
+    std::string value{};
+    [[nodiscard]] bool operator==(const DisplayBlock&) const = default;
+};
 
 struct Settings {
     std::uint32_t schema_version{kCurrentSchemaVersion};
@@ -22,6 +33,15 @@ struct Settings {
     std::uint8_t normal_brightness{100};
     std::uint8_t dim_brightness{20};
     std::string named_time_zone{"Asia/Singapore"};
+    bool clock_24h{true};
+    bool show_seconds{false};
+    DateFormat date_format{DateFormat::DdMm};
+    std::vector<DisplayBlock> bottom_blocks{
+        {DisplayBlockKind::Battery, ""}, {DisplayBlockKind::Space, " "},
+        {DisplayBlockKind::Time, ""}, {DisplayBlockKind::Space, " "}, {DisplayBlockKind::Date, ""},
+    };
+    time::ZoneTable zone_table{
+        "Asia/Singapore", 0, 2'524'608'000LL, 8 * 60 * 60, "+08", {}};
 };
 
 [[nodiscard]] Settings factory_defaults();
@@ -35,6 +55,8 @@ enum class ValidationError {
     InvalidDeadlineOrder,
     InvalidBrightness,
     InvalidTimeZone,
+    InvalidZoneTable,
+    InvalidDisplayLayout,
 };
 
 [[nodiscard]] ValidationError validate(const Settings& settings);

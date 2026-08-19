@@ -16,7 +16,9 @@ struct OffsetTransition {
 struct ZoneTable {
     std::string zone_name{"Asia/Singapore"};
     std::int64_t generated_at_epoch_seconds{0};
-    std::int64_t expires_at_epoch_seconds{0};
+    // Factory fixed-offset table intentionally extends beyond the minimum
+    // 15-year host-generated horizon from the 2026 production release.
+    std::int64_t expires_at_epoch_seconds{2'524'608'000LL};  // 2050-01-01 UTC
     std::int32_t initial_offset_seconds{8 * 60 * 60};
     std::string initial_abbreviation{"+08"};
     std::vector<OffsetTransition> transitions;

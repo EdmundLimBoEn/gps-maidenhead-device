@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <limits>
 
 namespace pocket_locator::config {
@@ -10,9 +11,12 @@ namespace {
 
 constexpr std::uint32_t kMinTimeoutMs = 1'000;
 constexpr std::uint32_t kMaxTimeoutMs = 600'000;
-constexpr std::uint32_t kMinTrackingIntervalMs = 1'000;
+constexpr std::uint32_t kMinTrackingIntervalMs = 5'000;
 constexpr std::uint32_t kMaxTrackingIntervalMs = 60'000;
 constexpr std::size_t kMaxTimeZoneLength = 64;
+constexpr std::size_t kMaxDisplayBlocks = 12;
+constexpr std::size_t kMaxBlockValueLength = 16;
+constexpr std::size_t kMaxZoneTransitions = 48;
 
 void append_u32(std::string& bytes, std::uint32_t value) {
     for (unsigned shift = 0; shift < 32; shift += 8) {
@@ -33,6 +37,30 @@ std::string serialized(const Settings& settings) {
     bytes.push_back(static_cast<char>(settings.dim_brightness));
     append_u32(bytes, static_cast<std::uint32_t>(settings.named_time_zone.size()));
     bytes.append(settings.named_time_zone);
+    bytes.push_back(settings.clock_24h ? 1 : 0);
+    bytes.push_back(settings.show_seconds ? 1 : 0);
+    bytes.push_back(static_cast<char>(settings.date_format));
+    append_u32(bytes, static_cast<std::uint32_t>(settings.bottom_blocks.size()));
+    for (const auto& block : settings.bottom_blocks) {
+        bytes.push_back(static_cast<char>(block.kind));
+        append_u32(bytes, static_cast<std::uint32_t>(block.value.size()));
+        bytes.append(block.value);
+    }
+    append_u32(bytes, static_cast<std::uint32_t>(settings.zone_table.zone_name.size()));
+    bytes.append(settings.zone_table.zone_name);
+    for (const auto value : {settings.zone_table.generated_at_epoch_seconds, settings.zone_table.expires_at_epoch_seconds}) {
+        for (unsigned shift = 0; shift < 64; shift += 8) bytes.push_back(static_cast<char>((static_cast<std::uint64_t>(value) >> shift) & 0xffU));
+    }
+    append_u32(bytes, static_cast<std::uint32_t>(settings.zone_table.initial_offset_seconds));
+    append_u32(bytes, static_cast<std::uint32_t>(settings.zone_table.initial_abbreviation.size()));
+    bytes.append(settings.zone_table.initial_abbreviation);
+    append_u32(bytes, static_cast<std::uint32_t>(settings.zone_table.transitions.size()));
+    for (const auto& transition : settings.zone_table.transitions) {
+        for (unsigned shift = 0; shift < 64; shift += 8) bytes.push_back(static_cast<char>((static_cast<std::uint64_t>(transition.utc_epoch_seconds) >> shift) & 0xffU));
+        append_u32(bytes, static_cast<std::uint32_t>(transition.offset_seconds));
+        append_u32(bytes, static_cast<std::uint32_t>(transition.abbreviation.size()));
+        bytes.append(transition.abbreviation);
+    }
     return bytes;
 }
 
@@ -66,9 +94,34 @@ ValidationError validate(const Settings& settings) {
     }
     if (settings.named_time_zone.empty() || settings.named_time_zone.size() > kMaxTimeZoneLength ||
         std::any_of(settings.named_time_zone.begin(), settings.named_time_zone.end(), [](unsigned char value) {
-            return value < 0x20U || value > 0x7eU;
+            return !std::isalnum(value) && value != '/' && value != '_' && value != '+' && value != '-' && value != '.';
         })) {
         return ValidationError::InvalidTimeZone;
+    }
+    if (settings.zone_table.zone_name != settings.named_time_zone || settings.zone_table.transitions.size() > kMaxZoneTransitions ||
+        time::validate(settings.zone_table) != time::ZoneTableError::None) {
+        return ValidationError::InvalidZoneTable;
+    }
+    if (settings.bottom_blocks.empty() || settings.bottom_blocks.size() > kMaxDisplayBlocks) return ValidationError::InvalidDisplayLayout;
+    std::size_t width = 0;
+    for (const auto& block : settings.bottom_blocks) {
+        if (block.value.size() > kMaxBlockValueLength) return ValidationError::InvalidDisplayLayout;
+        const auto printable = std::all_of(block.value.begin(), block.value.end(), [](unsigned char c) { return c >= 0x20U && c <= 0x7eU; });
+        if (!printable) return ValidationError::InvalidDisplayLayout;
+        switch (block.kind) {
+            case DisplayBlockKind::Battery: if (!block.value.empty()) return ValidationError::InvalidDisplayLayout; ++width; break;
+            case DisplayBlockKind::Time: if (!block.value.empty()) return ValidationError::InvalidDisplayLayout; width += settings.clock_24h ? (settings.show_seconds ? 8U : 5U) : (settings.show_seconds ? 11U : 8U); break;
+            case DisplayBlockKind::Date: if (!block.value.empty()) return ValidationError::InvalidDisplayLayout; width += settings.date_format == DateFormat::YyyyMmDd ? 10U : 5U; break;
+            case DisplayBlockKind::Text: width += block.value.size(); break;
+            case DisplayBlockKind::Space:
+                if (block.value.empty() || !std::all_of(block.value.begin(), block.value.end(), [](char c) { return c == ' '; })) return ValidationError::InvalidDisplayLayout;
+                width += block.value.size(); break;
+            case DisplayBlockKind::Separator:
+                if (block.value.size() != 1U || std::string_view(" |/-:.").find(block.value.front()) == std::string_view::npos) return ValidationError::InvalidDisplayLayout;
+                ++width; break;
+            default: return ValidationError::InvalidDisplayLayout;
+        }
+        if (width > 16U) return ValidationError::InvalidDisplayLayout;
     }
     return ValidationError::None;
 }

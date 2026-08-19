@@ -1,6 +1,6 @@
 # Maidenhead Pocket Locator — Build Plan
 
-Status: requirements complete; engineering not started  
+Status: software and enclosure sources implemented; hardware engineering draft complete; manufacturing and physical validation blocked on the recorded DRC, sourcing, quote, prototype, and measurement gates
 Target batch: 5–20 devices  
 Hard landed-cost target: **US$30 or less for every unit, including the first five**  
 Licensing goal: reciprocal open source

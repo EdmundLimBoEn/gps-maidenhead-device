@@ -13,6 +13,13 @@ Windows install automatically includes the `tzdata` package used by `zoneinfo`.
 The configurator never derives a time zone from device coordinates; it sends
 transitions for the IANA zone selected by the user.
 
-Profiles are versioned JSON. They intentionally omit coordinates and transient
-GNSS diagnostics. Applying a profile regenerates its time-zone transition table
-from the host database.
+Profiles are versioned JSON. They intentionally omit coordinates, transient GNSS
+diagnostics, and the generated time-zone table. Applying a profile or pressing
+**Validate and apply** regenerates and sends a compact 15-year transition table
+from the host's current IANA database. The supplied
+`profiles/factory-default.json` is a portable starting profile.
+
+For a physical device, click **Refresh USB**, select the RP2040 CDC port, and
+click **Connect**. The Device screen reports firmware, hardware, configuration
+health, and non-persistent diagnostics. If discovery finds nothing, verify that
+the cable carries data and that local serial-port permissions allow access.

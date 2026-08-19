@@ -47,10 +47,12 @@ TEST(two_slot_store_loads_newest_valid_record) {
     TwoSlotStore store;
     Settings first = pocket_locator::config::factory_defaults();
     first.named_time_zone = "Europe/London";
+    first.zone_table.zone_name = first.named_time_zone;
     REQUIRE_EQ(store.write(first), ValidationError::None);
 
     Settings second = first;
     second.named_time_zone = "America/New_York";
+    second.zone_table.zone_name = second.named_time_zone;
     REQUIRE_EQ(store.write(second), ValidationError::None);
 
     const auto loaded = store.load();
@@ -64,10 +66,12 @@ TEST(power_loss_before_marker_keeps_prior_valid_configuration) {
     TwoSlotStore store;
     Settings committed = pocket_locator::config::factory_defaults();
     committed.named_time_zone = "Europe/London";
+    committed.zone_table.zone_name = committed.named_time_zone;
     REQUIRE_EQ(store.write(committed), ValidationError::None);
 
     Settings replacement = committed;
     replacement.named_time_zone = "America/New_York";
+    replacement.zone_table.zone_name = replacement.named_time_zone;
     for (const auto interruption : {WriteInterruption::BeforePayload, WriteInterruption::AfterPayload,
                                     WriteInterruption::AfterVerification}) {
         TwoSlotStore trial = store;
@@ -82,9 +86,11 @@ TEST(corrupt_newest_slot_falls_back_to_older_valid_record) {
     TwoSlotStore store;
     Settings old = pocket_locator::config::factory_defaults();
     old.named_time_zone = "Europe/London";
+    old.zone_table.zone_name = old.named_time_zone;
     REQUIRE_EQ(store.write(old), ValidationError::None);
     Settings newest = old;
     newest.named_time_zone = "Pacific/Chatham";
+    newest.zone_table.zone_name = newest.named_time_zone;
     REQUIRE_EQ(store.write(newest), ValidationError::None);
 
     store.corrupt_crc_for_test(1);

@@ -13,6 +13,7 @@ def test_singapore_has_no_transitions() -> None:
     assert table.initial_offset_seconds == 8 * 3600
     assert table.transitions == ()
     assert table.expiry_year == 2041
+    assert table.expires_at == "2041-08-19T00:00:00+00:00"
 
 
 def test_new_york_contains_forward_and_back_transitions() -> None:

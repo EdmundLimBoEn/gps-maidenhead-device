@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -246,7 +247,7 @@ ParseResult parse_nmea_sentence(std::string_view line) {
             }
         }
     } else if (type == "GGA") {
-        if (fields.size() < 7U) {
+        if (fields.size() < 8U) {
             result.error = NmeaError::fields_missing;
             return result;
         }
@@ -262,6 +263,17 @@ ParseResult parse_nmea_sentence(std::string_view line) {
             return result;
         }
         sentence.receiver_fix_valid = quality > 0;
+        if (quality > std::numeric_limits<std::uint8_t>::max()) {
+            result.error = NmeaError::malformed;
+            return result;
+        }
+        sentence.fix_quality = static_cast<std::uint8_t>(quality);
+        int satellites = 0;
+        if (!parse_integer(fields[7], satellites) || satellites < 0 || satellites > std::numeric_limits<std::uint8_t>::max()) {
+            result.error = NmeaError::malformed;
+            return result;
+        }
+        sentence.satellites_used = static_cast<std::uint8_t>(satellites);
         if (sentence.receiver_fix_valid) {
             sentence.position = parse_position(fields, 2, 4);
             if (!sentence.position) {
@@ -292,7 +304,8 @@ std::optional<CurrentFix> FixAccumulator::ingest(const NmeaSentence& sentence) {
         !positions_agree(*sentence.position, *latest_rmc_->position)) {
         return std::nullopt;
     }
-    return CurrentFix{*latest_rmc_->position, *latest_rmc_->utc_time, *latest_rmc_->utc_date};
+    return CurrentFix{*latest_rmc_->position, *latest_rmc_->utc_time, *latest_rmc_->utc_date,
+                      sentence.fix_quality, sentence.satellites_used};
 }
 
 void FixAccumulator::clear() {

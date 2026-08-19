@@ -20,6 +20,8 @@ class Profile:
     def to_dict(self) -> dict[str, Any]:
         return {
             "profile_schema_version": self.profile_schema_version,
+            # DeviceConfig deliberately omits the generated transition table
+            # here. Applying this profile regenerates it from current host tzdata.
             "config": self.config.to_dict(),
             "notes": self.notes,
         }

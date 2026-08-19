@@ -130,6 +130,16 @@ TEST(off_requires_a_hold_and_usb_returns_to_dark_idle) {
     REQUIRE_EQ(session.backlight(), Backlight::Off);
 }
 
+TEST(usb_boot_enters_dark_idle_without_starting_gnss) {
+    CheckSession session;
+    const auto update = session.set_usb_present(true, 0);
+
+    REQUIRE(!update.power_released);
+    REQUIRE_EQ(session.state(), State::UsbIdle);
+    REQUIRE_EQ(session.backlight(), Backlight::Off);
+    REQUIRE(!session.gnss_is_active());
+}
+
 TEST(two_button_hold_requests_factory_reset_without_triggering_off) {
     CheckSession session = accepted_session();
     session.valid_fix("OJ11XH", 2'000);

@@ -1,0 +1,26 @@
+{
+  "profile_schema_version": 1,
+  "config": {
+    "schema_version": 1,
+    "top_template": "GRID: {grid6}",
+    "bottom_blocks": [
+      {"kind": "battery", "value": ""},
+      {"kind": "space", "value": " "},
+      {"kind": "time", "value": ""},
+      {"kind": "space", "value": " "},
+      {"kind": "date", "value": ""}
+    ],
+    "timezone": "Asia/Singapore",
+    "clock_24h": true,
+    "show_seconds": false,
+    "date_format": "DD/MM",
+    "gnss_mode": "single_fix",
+    "tracking_interval_seconds": 5,
+    "acquisition_timeout_seconds": 120,
+    "dim_deadline_seconds": 60,
+    "shutdown_deadline_seconds": 120,
+    "normal_brightness_percent": 100,
+    "dim_brightness_percent": 20
+  },
+  "notes": "Factory V1 defaults. Applying regenerates the device time-zone transition table from local tzdata."
+}
