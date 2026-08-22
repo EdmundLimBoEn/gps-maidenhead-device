@@ -48,7 +48,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends kicad openscad xvfb
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          kicad kicad-footprints openscad xvfb
       - run: python hardware/kicad/generate_kicad.py
       - run: >-
           git diff --exit-code --
