@@ -2,6 +2,7 @@
 #include "pocket_locator/usb/protocol.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <limits>
 #include <vector>

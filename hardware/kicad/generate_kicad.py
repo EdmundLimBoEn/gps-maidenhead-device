@@ -376,6 +376,8 @@ def generate_schematic() -> None:
     generated cache library keeps the source portable across KiCad installs.
     """
     specs = [spec for spec in components() if not spec.ref.startswith("H")]
+    board = pcbnew.LoadBoard(str(BOARD_PATH))
+    footprints_by_ref = {footprint.GetReference(): footprint for footprint in board.GetFootprints()}
     library = ["EESchema-LIBRARY Version 2.4", "#encoding utf-8"]
     schematic = [
         "EESchema Schematic File Version 4",
@@ -395,7 +397,9 @@ def generate_schematic() -> None:
     ]
     placed = []
     for index, spec in enumerate(specs):
-        footprint = load_footprint(spec)
+        footprint = footprints_by_ref.get(spec.ref)
+        if footprint is None:
+            raise RuntimeError(f"authoritative PCB lacks footprint {spec.ref}")
         pad_numbers = sorted({pad.GetNumber() for pad in footprint.Pads() if pad.GetNumber()},
                              key=lambda number: (not number.isdigit(), int(number) if number.isdigit() else number))
         symbol = f"PL_{spec.ref}"
