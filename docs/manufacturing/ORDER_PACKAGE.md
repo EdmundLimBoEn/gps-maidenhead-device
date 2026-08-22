@@ -6,12 +6,15 @@ checklist for turning them into an order without silently bypassing a gate.
 
 ## Include
 
-- KiCad project, schematic PDF, Gerbers, drill, IPC/netlist, BOM, CPL, assembly
-  drawing, and DRC/ERC reports generated from the same commit.
+- KiCad project, schematic PDF, Gerbers, drill, IPC/netlist, engineering BOM,
+  matched SMD assembly BOM/CPL, interactive BOM, assembly drawing, and DRC/ERC
+  reports generated from the same commit.
 - Exact manufacturer part numbers, approved substitutes, stock snapshots, and
   physical drawings for the LCD, patch/coax, cell, switches, connectors, window,
   gasket, screws, and inserts.
 - JLCPCB five-board/assembly cart export plus every external supplier cart.
+- The dated [cost-research snapshot](COST_RESEARCH.md), superseded by saved carts
+  for the exact released revision; research prices are not landed quote evidence.
 - Enclosure source, STL exports, print material/setting sheet, and an unpopulated
   fit-check record.
 - Firmware UF2 hash, configurator version/profile, assembly guide, bring-up
@@ -28,6 +31,8 @@ per_finished_unit = five_unit_total / 5
 The order gate passes only when `five_unit_total <= US$150`. Do not exclude spare
 minimum quantities, shipping, taxes, fixture charges, or enclosure consumables.
 Store the rendered carts and totals with the release evidence.
+Record destination country, currency/FX rate, quote expiry, shipping service,
+tax/duty treatment, and whether any coupon or new-customer promotion was applied.
 
 ## Sign-off
 

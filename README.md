@@ -5,7 +5,7 @@ locator. The product requirements and validation gates live in [PLAN.md](PLAN.md
 
 ## Current status
 
-The full development source tree now covers RP2040 firmware and host tests, a
+The development source tree covers RP2040 firmware and host tests, a
 Tk/serial configurator with profiles and UF2 recovery, KiCad engineering sources
 and manufacturing workflow, a parametric enclosure with printable exports, and
 assembly/validation documentation.
@@ -28,10 +28,16 @@ python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e './configurator[dev]'
 pytest configurator/tests
+python -m ruff check configurator tools
+python -m ruff format --check configurator tools
 python -m maidenhead_configurator
 
-python tools/validate_enclosure.py
-python tools/release_preflight.py
+bash firmware/tests/pico_stub_compile.sh
+python3 hardware/manufacturing/preflight.py
+python3 tools/export_enclosure.py
+python3 tools/validate_enclosure.py --require-openscad
+python3 tools/check_docs.py
+python3 tools/release_preflight.py
 ```
 
 To build an RP2040 UF2, install the Pico SDK and set its location:
@@ -52,6 +58,10 @@ Do not order or distribute from an arbitrary working tree. Generate artifacts fr
 a tagged revision, complete [the five-unit order package](docs/manufacturing/ORDER_PACKAGE.md),
 and follow the [assembly](docs/assembly/ASSEMBLY.md) and
 [test procedures](docs/testing/TEST_PROCEDURES.md).
+
+The [mechanical interface contract](enclosure/INTERFACES.md) and
+[cost research snapshot](docs/manufacturing/COST_RESEARCH.md) make the remaining
+fit and landed-cost unknowns explicit. Neither is a manufacturing sign-off.
 
 Use only the released protected LiPo and charger configuration. The device is not
 an emergency locator, navigation instrument, tracker, or immersion-rated product.

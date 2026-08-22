@@ -1,1 +1,1 @@
-unit_serial,pcb_revision,enclosure_revision,firmware_revision,test,utc_date,ambient_c,duration_minutes,ingress_or_damage,controls_pass,pass,notes
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,utc_date,operator,test,material_and_settings,gasket_lot,ambient_c,exposure_amount,duration_minutes,orientation_or_drop_target,pre_mass_g,post_mass_g,ingress_or_damage,controls_pass,pass,evidence_hash,notes

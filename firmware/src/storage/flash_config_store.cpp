@@ -18,6 +18,8 @@ constexpr std::uint32_t kCommitted = 0U;
 constexpr std::uint32_t kUncommitted = 0xffffffffU;
 constexpr std::size_t kSlotCount = 2;
 constexpr std::uint32_t kReservedBytes = kSlotCount * FLASH_SECTOR_SIZE;
+static_assert(PICO_FLASH_SIZE_BYTES == 2U * 1024U * 1024U,
+              "configuration offsets require the production 2 MiB flash");
 constexpr std::uint32_t kStorageOffset = PICO_FLASH_SIZE_BYTES - kReservedBytes;
 constexpr std::size_t kMaxBlocks = 12;
 constexpr std::size_t kMaxTransitions = 48;
@@ -234,10 +236,10 @@ config::ValidationError FlashConfigStore::write(const config::Settings& settings
 }
 
 config::ValidationError FlashConfigStore::factory_reset() {
-    const auto interrupts = save_and_disable_interrupts();
-    flash_range_erase(kStorageOffset, kReservedBytes);
-    restore_interrupts(interrupts);
-    return config::ValidationError::None;
+    // Defaults use the same inactive-slot/verify/commit transaction as any
+    // configuration write. A brownout therefore leaves either the previous
+    // valid settings or committed defaults, never two erased slots.
+    return write(config::factory_defaults());
 }
 
 }  // namespace pocket_locator::storage

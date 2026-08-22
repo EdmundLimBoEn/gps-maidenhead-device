@@ -1,6 +1,6 @@
 # Maidenhead Pocket Locator — Build Plan
 
-Status: software and enclosure sources implemented; hardware engineering draft complete; manufacturing and physical validation blocked on the recorded DRC, sourcing, quote, prototype, and measurement gates
+Status: development sources and automated electrical/layout checks are complete and clean; manufacturing remains blocked on exact-part Z-stack and physical-overlay validation, exact-part sourcing, a landed quote, prototypes, and measured acceptance evidence
 Target batch: 5–20 devices  
 Hard landed-cost target: **US$30 or less for every unit, including the first five**  
 Licensing goal: reciprocal open source
@@ -68,7 +68,7 @@ V1 is complete only when all of the following pass:
 | Configuration | Settings persist across shutdown, reject corruption, and can be saved/restored as profiles |
 | Weather goal | Passes the drizzle and sand procedures in section 8 with no internal ingress or control failure |
 | Thermal | Operates at 40 °C ambient and inhibits charging when the battery sensor is too warm |
-| Mechanical | Front profile remains approximately 85 × 41 mm; total depth does not exceed 35 mm |
+| Mechanical | Front profile remains approximately LCD-sized (engineering source: 88 × 44 mm); total depth does not exceed 35 mm |
 | Cost | Quoted landed cost is no more than US$30 per finished unit when ordering the first five |
 
 The locator definition and test vectors should follow the ADIF WGS-84 encoding: positions 1–2 use `A–R`, 3–4 use `0–9`, and 5–6 use `A–X`. See the [ADIF Maidenhead definition](https://adif.org.uk/315/ADIF_315.htm#Maidenhead_Locators).
@@ -90,7 +90,7 @@ flowchart LR
     GPS -->|UART NMEA| MCU
     PATCH[Internal passive patch] -->|short coax + u.FL| GPS
     MCU -->|PWM| BOOST
-    MCU --> LEVEL[74AHCT245 level shift]
+    MCU --> LEVEL[SN74LVC8T245 level shift]
     LEVEL --> LCD[Blue 1602 LCD]
     OFF[OFF button] --> MCU
     MCU -->|power hold / release| LATCH
@@ -107,7 +107,7 @@ These are design candidates, not permission to order. Freeze exact manufacturer 
 | GNSS antenna | Internal passive L1 ceramic patch with short coax and u.FL/I-PEX plug | Allows the patch to mount beneath the top wall and face the sky without enlarging the LCD-like front profile. Final antenna must provide documented dimensions, cable loss, ground requirements, and operating temperature. |
 | GNSS fallback | Quectel L86-M33 | Use only if the GP-02 plus remote patch fails reception tests. Its integrated patch is lower RF-integration risk but materially more expensive. |
 | LCD | HD44780/ST7066-compatible blue-backlit 16×2 module, nominal 80 × 36 mm | Matches the requested Arduino-kit appearance. Freeze a 5 V part with measured backlight current and published outline drawing. A representative module is up to 13.5 mm thick; see [Winstar WH1602B](https://www.winstar.com.tw/products/lcd-display/character-lcd-display-module/lcd-display-16x2.html). |
-| LCD level translation | 74AHCT245, write-only 4-bit LCD bus | RP2040 remains at 3.3 V; AHCT inputs reliably recognize its logic-high level while driving a 5 V LCD. Tie LCD `R/W` low and use fixed command delays. |
+| LCD level translation | SN74LVC8T245PWR, write-only 4-bit LCD bus | Its dual rails translate RP2040 3.3 V outputs to the 5 V LCD domain. Strap direction A→B, hold output-enable active, ground unused A inputs, tie LCD `R/W` low, and use fixed command delays. |
 | LCD supply | TPS61023 set to 5 V | Efficient boost converter with true disconnect and about 0.1 µA shutdown current. See [TI TPS61023](https://www.ti.com/product/TPS61023). |
 | Backlight control | Logic-level MOSFET driven by MCU PWM | Provides normal/dim brightness sliders, success flash, and full backlight cutoff. Verify the selected LCD includes or receives a safe LED current-limiting resistor. |
 | Charger / power path | BQ24074 | Supports simultaneous system use and charging, input limiting, thermal regulation, and battery NTC monitoring. See [TI BQ24074](https://www.ti.com/product/BQ24074). Do not replace it with a charger lacking load sharing merely to save cost. |
@@ -140,7 +140,12 @@ Preliminary charging configuration:
 
 ### 3.4 PCB
 
-- Design in KiCad using a two-layer board first to control cost.
+- Design in KiCad as a four-layer board: F.Cu/B.Cu carry signals, In1 is an
+  uninterrupted ground reference, and In2 distributes power with only four
+  length-bounded crossovers: LCD RS (under 7 mm), LOCATE (under 4 mm), and
+  QSPI SCLK/SD2 (under 6 mm). USB and RF remain on the outer layers. The two-layer
+  cost-first attempt was rejected because routing fragmented critical return
+  paths for USB and GNSS RF.
 - Let JLCPCB assemble all SMD parts, including RP2040, GP-02, charger, converters, USB-C, ESD, and level shifting.
 - Keep hand work to the LCD/header, battery plug-in, antenna plug-in, actuator installation, and enclosure assembly.
 - Place labelled test points for `VBUS`, `BAT`, charger output, `3V3`, `5V_LCD`, `GND`, `POWER_HOLD`, UART TX/RX, SWDIO, SWCLK, RUN, and BOOTSEL.
@@ -152,7 +157,7 @@ Preliminary charging configuration:
 
 ### 3.5 Enclosure
 
-Target envelope: approximately **85 × 41 × no more than 35 mm**. The front outline remains close to the LCD PCB; depth absorbs the battery, PCBA, sealing, and antenna orientation.
+Target envelope: approximately LCD-sized and **no more than 35 mm deep**. The engineering enclosure is **88 × 44 × 34.5 mm** because the original 85 × 41 mm concept left no physical land for both the 81 × 37 mm PCB and a continuous gasket. Depth absorbs the battery, PCBA, sealing, and antenna orientation.
 
 Construction:
 
@@ -386,7 +391,7 @@ Licenses:
 - Firmware and Python configurator: `GPL-3.0-or-later`.
 - PCB and mechanical source: `CERN-OHL-S-2.0`.
 - Documentation: `CC-BY-SA-4.0`.
-- Include SPDX identifiers in source files and a clear contribution/licensing section in the future README.
+- Include SPDX identifiers in source files and a clear contribution/licensing section in the README.
 
 These reciprocal licenses implement the requirement that distributed derivatives remain open. Review third-party fonts, libraries, footprints, and CAD models before inclusion; prefer compatible permissive or reciprocal dependencies.
 
@@ -408,7 +413,7 @@ Exit: conversion/state/layout/profile tests pass on Windows, macOS, and Linux CI
 - Measure or obtain trustworthy worst-case LCD backlight current before fixing cell capacity and charge current.
 - Draft schematic, power budget, off-current budget, RF layout, PCB outline, and connector placement.
 - Review against every manufacturer reference circuit.
-- Create preliminary enclosure stack-up and verify the 85 × 41 × 35 mm envelope.
+- Create preliminary enclosure stack-up and verify the approximately LCD-sized, ≤35 mm-deep envelope.
 - Produce complete five-unit landed quote.
 
 Exit: schematic review complete, dimensional stack fits, predicted shutdown current ≤10 µA, and five-unit total ≤$150. Otherwise redesign and requote.

@@ -26,11 +26,12 @@ not evidence that a symbol pin is correct.
 | GPIO17 / UART0 RX | `GNSS_TX` | U7 UART output | Receiver output to MCU input. |
 | GPIO18 | `GNSS_EN` | U7 enable/load switch | Default low; does not supply GNSS backup power during shutdown. |
 | GPIO19 | `VBUS_PRESENT` | VBUS sense divider | Series/diode isolated: VBUS must never power 3V3 through this pin. |
-| GPIO20 | `CHG_N` | U3 STAT output | Open drain/active low; pull-up to switched 3V3. |
+| GPIO20 | `CHG_N` | U3 CHG output | Open drain/active low; RCHGPU1 is the explicit 100 kΩ logic pull-up, in parallel with the separately current-limited RCHG1/LED indicator branch. |
 | GPIO21 | `BAT_SENSE_EN` | Q5/Q4 divider switch | Pulse high, wait for the 100 nF ADC node to settle, sample, then return low. |
 | GPIO26 / ADC0 | `BAT_ADC` | switched divider | Q4 isolates BAT whenever GPIO21 is low or 3V3 is absent; calibrate before setting battery icon thresholds. |
 | QSPI CSn (ROM BOOTSEL) | `BOOTSEL_N` | SW3 to GND | Physical recovery switch only. Never connect to ordinary GPIO or LCD. |
 | RUN | `RUN_N` | SW4 to GND / TP | Reset; pull-up and capacitor must follow RP2040 reference circuit. |
+| XIN / XOUT | `XIN` / `XOUT` | X1 ABM8-272-T3 | 15 pF C0G loads; XOUT passes through 1 kΩ RXTAL1 to `XOUT_XTAL` to limit crystal drive. |
 | SWDIO / SWCLK | `SWDIO`, `SWCLK` | TP pads | Test pads, no production debug connector required. |
 
 Unused GPIOs are not routed to external connectors. Keep their reset pulls as
@@ -40,13 +41,13 @@ recommended by the RP2040 hardware design guide.
 
 | Connector / pin | Net | Direction / purpose |
 |---|---|---|
-| J1 USB-C A4/B4 | `VBUS` | 5 V input through F1 to charger IN; no PD source capability. |
-| J1 USB-C A6/B6 | `USB_DP` | USB 2.0 device D+ through D1. |
-| J1 USB-C A7/B7 | `USB_DN` | USB 2.0 device D− through D1. |
+| J1 USB-C A4/A9/B4/B9 | `VBUS_RAW` | 5 V receptacle input; F1 creates protected `VBUS` for charger and sensing. No PD source capability. |
+| J1 USB-C A6/B6 | `USB_DP_CONN` | USB 2.0 D+ into D1; D1 output and RUSB1 create `USB_DP` at RP2040. |
+| J1 USB-C A7/B7 | `USB_DM_CONN` | USB 2.0 D− into D1; D1 output and RUSB2 create `USB_DM` at RP2040. |
 | J1 CC1, CC2 | `CC1`, `CC2` | Independent 5.1 kΩ Rd to GND. |
 | J1 shield and GND pins | `GND` | Tie to ground plane at connector; final EMI treatment requires review. |
 | J2 pin 1 | `BAT` | Protected cell positive to BQ24074 BAT. BQ24074 OUT, rather than the raw cell, creates `SYS_RAW`. |
-| J2 pin 2 | `NTC` | Cell thermistor to BQ24074 TS; TH1 is alternative only. |
+| J2 pin 2 | `CHG_TS` | Cell thermistor to BQ24074 TS; TH1 is alternative only. |
 | J2 pin 3 | `GND` | Cell return. |
 | J3 pin 1 / 2 | `GND` / `5V_LCD` | LCD logic supply. |
 | J3 pin 3 | `LCD_VO` | Contrast potentiometer/divider, 5 V-safe. |
@@ -54,7 +55,7 @@ recommended by the RP2040 hardware design guide.
 | J3 pin 5 | `GND` | LCD R/W permanently low. |
 | J3 pins 7–10 | `GND` | LCD D0–D3 unused in 4-bit mode. |
 | J3 pins 11–14 | `LCD_D4`–`LCD_D7` | From U6 B2–B5. |
-| J3 pin 15 / 16 | `LCD_BL+` / `LCD_BL_N` | Positive through verified current limit; Q3 PWM low side. |
+| J3 pin 15 / 16 | `LCD_BL_A` / `LCD_BL_K` | Positive through verified current limit; Q3 PWM low side. |
 | J4 centre / shell | `GNSS_RF_50R` / `GND` | u.FL to enclosure patch; centre trace has 50-ohm grounded-coplanar target. |
 
 ## Required test points

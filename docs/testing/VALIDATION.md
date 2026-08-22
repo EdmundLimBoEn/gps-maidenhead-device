@@ -1,6 +1,8 @@
-# Validation evidence checklist
+# Validation evidence quick index
 
-Software CI is necessary but does not satisfy the physical acceptance criteria.
+The canonical status and raw-file links belong in [TEST_EVIDENCE.md](TEST_EVIDENCE.md);
+the procedures are in [TEST_PROCEDURES.md](TEST_PROCEDURES.md). Software CI is
+necessary but does not satisfy the physical acceptance criteria.
 Record revision, equipment, conditions, raw observations, failures, and retests.
 
 - [ ] Ten discharged-backup open-sky cold starts; at least 9 fixes in timeout

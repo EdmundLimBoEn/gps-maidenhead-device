@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """CDC serial discovery and newline-delimited JSON transport for real devices."""
+
 from __future__ import annotations
 
 import json
@@ -79,10 +80,14 @@ class NdjsonSerialTransport(Transport):
     ) -> None:
         if serial_factory is None:
             if serial is None:
-                raise ProtocolError("pyserial_missing", "pyserial is required for USB configuration")
+                raise ProtocolError(
+                    "pyserial_missing", "pyserial is required for USB configuration"
+                )
             serial_factory = serial.Serial
         try:
-            self._serial = serial_factory(port=port, baudrate=baudrate, timeout=timeout, write_timeout=timeout)
+            self._serial = serial_factory(
+                port=port, baudrate=baudrate, timeout=timeout, write_timeout=timeout
+            )
         except Exception as exc:
             raise ProtocolError("port_open_failed", f"could not open {port}: {exc}") from exc
         self.port = port
@@ -104,7 +109,7 @@ class NdjsonSerialTransport(Transport):
             line = json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n"
         except (TypeError, ValueError) as exc:
             raise ProtocolError("encode_failed", str(exc)) from exc
-        if len(line) > MAX_MESSAGE_BYTES:
+        if len(line) - 1 > MAX_MESSAGE_BYTES:
             raise ProtocolError("message_too_large", "request exceeds protocol limit")
         try:
             self._serial.write(line)
@@ -113,8 +118,13 @@ class NdjsonSerialTransport(Transport):
                 received = self._serial.readline(MAX_MESSAGE_BYTES + 1)
                 if not received:
                     raise ProtocolError("timeout", f"no response from {self.port}")
-                if len(received) > MAX_MESSAGE_BYTES or not received.endswith(b"\n"):
-                    raise ProtocolError("invalid_response", "device response is too large or not newline terminated")
+                if (
+                    not received.endswith(b"\n")
+                    or len(received.rstrip(b"\r\n")) > MAX_MESSAGE_BYTES
+                ):
+                    raise ProtocolError(
+                        "invalid_response", "device response is too large or not newline terminated"
+                    )
                 try:
                     decoded = json.loads(received.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:

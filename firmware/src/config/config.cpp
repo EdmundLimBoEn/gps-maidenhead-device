@@ -92,6 +92,10 @@ ValidationError validate(const Settings& settings) {
     if (settings.normal_brightness > 100 || settings.dim_brightness > settings.normal_brightness) {
         return ValidationError::InvalidBrightness;
     }
+    if (settings.date_format != DateFormat::DdMm && settings.date_format != DateFormat::MmDd &&
+        settings.date_format != DateFormat::DdMmm && settings.date_format != DateFormat::YyyyMmDd) {
+        return ValidationError::InvalidDisplayLayout;
+    }
     if (settings.named_time_zone.empty() || settings.named_time_zone.size() > kMaxTimeZoneLength ||
         std::any_of(settings.named_time_zone.begin(), settings.named_time_zone.end(), [](unsigned char value) {
             return !std::isalnum(value) && value != '/' && value != '_' && value != '+' && value != '-' && value != '.';

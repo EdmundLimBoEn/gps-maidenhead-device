@@ -47,7 +47,7 @@ supersedes this document and the schematic/PCB must be revised together.
 
 ## Placement and board mechanics
 
-The nominal PCB is 81 x 37 mm inside an approximately 85 x 41 mm front
+The nominal four-layer PCB is 81 x 37 mm inside an approximately 88 x 44 mm front
 enclosure. J1 is centred on the left wall; the LCD is rear-mounted at the
 window datum; U7/J4 occupy the upper-right RF zone; power conversion occupies
 the lower-left/centre away from RF. The final enclosure source controls exact
@@ -58,14 +58,21 @@ checks: board-to-wall clearance, USB shell/cap clearance, LCD glass/window
 gap, battery pouch and lead bend radius, patch clearance, button travel,
 light-pipe alignment, screw-boss keep-outs, and test-pad access with a probe.
 
-## Two-layer release rules
+## Four-layer release rules
 
-- Board edge, holes, PCB thickness, and copper-to-edge clearance are confirmed
-  against the fabricator capability selected for the quote.
+- Board edge, holes, PCB thickness, and the explicit 0.20 mm copper-to-edge
+  minimum are confirmed against the fabricator capability selected for the
+  quote. The 0.20 mm rule is required by the short escapes from the three
+  edge-mounted parts (J1, SW1 and SW2); do not order from a process with a
+  larger finished-copper edge requirement.
 - All component footprints are from a reviewed local library or vendor drawing
   and include pin-1/polarity markings. Never fabricate from the placeholder
   outline blocks in the early generated board.
 - Assign net classes before routing: RF controlled impedance, USB differential
   pair, battery/charger high current, LCD boost/backlight, and ordinary logic.
+- Ordinary logic uses 0.15 mm traces and 0.50/0.20 mm finished through-vias;
+  the selected four-layer process must explicitly support those dimensions.
+  USB, RF, and power keep their dedicated net-class geometry and are not
+  reduced to the ordinary-logic values to escape congestion.
 - Run ERC and DRC with zero unreviewed errors, inspect Gerbers in an independent
   viewer, and use the fabrication checklist in `manufacturing/`.

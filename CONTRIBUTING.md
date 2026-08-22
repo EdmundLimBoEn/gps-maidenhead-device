@@ -1,7 +1,7 @@
 # Contributing
 
 Keep deterministic logic host-testable and hardware drivers thin. Run the native
-firmware tests and Python test/lint suite described in `README.md` before opening a
+firmware tests and Python test/lint suite described in the [README](README.md) before opening a
 change. Do not edit historical Supabase-style migrations if any are added later;
 append a new versioned migration or schema migration instead.
 

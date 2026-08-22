@@ -14,4 +14,5 @@ US$150 or less for five finished devices.
 | PCB/PCBA | TBD | | |
 | Enclosure hardware | TBD | | |
 | Shipping/setup/consumables | TBD | | |
-| **Total / 5** | | **BLOCKED until quoted** | |
+| **Five-unit total** | | **BLOCKED until quoted** | |
+| **Per finished unit (total / 5)** | | **BLOCKED until quoted** | |

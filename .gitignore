@@ -8,3 +8,8 @@ __pycache__/
 *.egg-info/
 dist/
 .venv/
+*.kicad_prl
+~*.lck
+fp-info-cache
+rescue-backup/
+hardware/manufacturing/review-output/

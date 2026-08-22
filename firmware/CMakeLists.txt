@@ -63,8 +63,14 @@ if(POCKET_LOCATOR_BUILD_RP2040)
     )
     target_compile_features(pocket_locator_rp2040 PRIVATE cxx_std_20)
     target_compile_definitions(pocket_locator_rp2040 PRIVATE
+        PICO_NO_BI_PROGRAM_BUILD_DATE=1
         PICO_STDIO_USB=1
         PICO_STDIO_UART=0
+    )
+    pico_add_linker_script_override_path(
+        pocket_locator_rp2040
+        ${CMAKE_CURRENT_LIST_DIR}/linker
+        FILES section_extra_post_end.incl
     )
     # Apply strict warnings only to project sources. Pico SDK sources are added
     # to this target internally and intentionally use constructs rejected by

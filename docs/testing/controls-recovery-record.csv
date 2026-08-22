@@ -1,0 +1,1 @@
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,utc_date,operator,test,iteration,input_duration_ms,usb_present,interruption_phase,observed_state,recovered_without_debugger,profile_crc_preserved,pass,evidence_hash,notes

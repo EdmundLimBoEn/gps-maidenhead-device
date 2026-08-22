@@ -2,19 +2,22 @@
 
 #include "locator/nmea.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace locator {
 namespace {
 
 constexpr std::size_t kMaximumSentenceBytes = 256;
-constexpr double kMaximumPairedPositionDifferenceDegrees = 0.001;
+constexpr double kMaximumPairedPositionDifferenceDegrees = 0.0001;
 
 std::vector<std::string_view> split_fields(std::string_view payload) {
     std::vector<std::string_view> fields;
@@ -32,7 +35,9 @@ std::vector<std::string_view> split_fields(std::string_view payload) {
 }
 
 bool parse_integer(std::string_view text, int& result) {
-    if (text.empty()) {
+    if (text.empty() || !std::all_of(text.begin(), text.end(), [](unsigned char value) {
+            return value >= '0' && value <= '9';
+        })) {
         return false;
     }
     const char* const begin = text.data();
@@ -43,6 +48,18 @@ bool parse_integer(std::string_view text, int& result) {
 
 bool parse_decimal(std::string_view text, double& result) {
     if (text.empty()) {
+        return false;
+    }
+    const auto dot = text.find('.');
+    const auto whole = dot == std::string_view::npos ? text : text.substr(0, dot);
+    const auto fraction = dot == std::string_view::npos ? std::string_view{} : text.substr(dot + 1U);
+    const auto digits = [](std::string_view value) {
+        return !value.empty() && std::all_of(value.begin(), value.end(), [](unsigned char character) {
+            return character >= '0' && character <= '9';
+        });
+    };
+    if (!digits(whole) || (dot != std::string_view::npos && !digits(fraction)) ||
+        (dot != std::string_view::npos && text.find('.', dot + 1U) != std::string_view::npos)) {
         return false;
     }
     std::string copy{text};
@@ -68,15 +85,14 @@ std::optional<UtcTime> parse_time(std::string_view text) {
             return std::nullopt;
         }
         const std::string_view fraction = text.substr(7);
-        if (fraction.empty() || fraction.size() > 2U) {
+        if (fraction.empty() || fraction.size() > 3U ||
+            !std::all_of(fraction.begin(), fraction.end(), [](unsigned char value) {
+                return value >= '0' && value <= '9';
+            })) {
             return std::nullopt;
         }
-        if (!parse_integer(fraction, centisecond)) {
-            return std::nullopt;
-        }
-        if (fraction.size() == 1U) {
-            centisecond *= 10;
-        }
+        centisecond = (fraction[0] - '0') * 10;
+        if (fraction.size() >= 2U) centisecond += fraction[1] - '0';
     }
     return UtcTime{hour, minute, second, centisecond};
 }
@@ -109,7 +125,9 @@ std::optional<double> parse_coordinate(std::string_view raw, std::string_view he
         return std::nullopt;
     }
     const std::size_t degree_digits = latitude ? 2U : 3U;
-    if (raw.size() <= degree_digits) {
+    if (raw.size() < degree_digits + 4U || raw[degree_digits] < '0' || raw[degree_digits] > '9' ||
+        raw[degree_digits + 1U] < '0' || raw[degree_digits + 1U] > '9' ||
+        raw[degree_digits + 2U] != '.') {
         return std::nullopt;
     }
     int degrees = 0;
@@ -119,7 +137,7 @@ std::optional<double> parse_coordinate(std::string_view raw, std::string_view he
         return std::nullopt;
     }
     const int maximum_degrees = latitude ? 90 : 180;
-    if (degrees > maximum_degrees || (degrees == maximum_degrees && minutes != 0.0)) {
+    if (degrees < 0 || degrees > maximum_degrees || (degrees == maximum_degrees && minutes != 0.0)) {
         return std::nullopt;
     }
     const char sign_letter = hemisphere.front();
@@ -212,7 +230,8 @@ ParseResult parse_nmea_sentence(std::string_view line) {
     }
 
     const auto fields = split_fields(line.substr(1, star - 1U));
-    if (fields.empty() || fields[0].size() != 5U) {
+    if (fields.empty() || fields[0].size() != 5U || fields[0][0] < 'A' || fields[0][0] > 'Z' ||
+        fields[0][1] < 'A' || fields[0][1] > 'Z') {
         result.error = NmeaError::unsupported_sentence;
         return result;
     }
@@ -239,6 +258,13 @@ ParseResult parse_nmea_sentence(std::string_view line) {
             return result;
         }
         sentence.receiver_fix_valid = fields[2] == "A";
+        // Optional FAA mode indicators E/M/S represent estimated, manual,
+        // or simulated positions and are not current live GNSS fixes.
+        if (sentence.receiver_fix_valid && fields.size() > 12U && !fields[12].empty() &&
+            fields[12] != "A" && fields[12] != "D" && fields[12] != "R" &&
+            fields[12] != "F" && fields[12] != "P") {
+            sentence.receiver_fix_valid = false;
+        }
         if (sentence.receiver_fix_valid) {
             sentence.position = parse_position(fields, 3, 5);
             if (!sentence.position) {
@@ -258,18 +284,21 @@ ParseResult parse_nmea_sentence(std::string_view line) {
             return result;
         }
         int quality = 0;
-        if (!parse_integer(fields[6], quality) || quality < 0) {
+        if (fields[6].size() != 1U || !parse_integer(fields[6], quality) || quality < 0) {
             result.error = NmeaError::malformed;
             return result;
         }
-        sentence.receiver_fix_valid = quality > 0;
+        // NMEA qualities 6–8 are estimated/dead-reckoning, manual, and
+        // simulation modes rather than receiver-declared live 2D/3D fixes.
+        sentence.receiver_fix_valid = quality > 0 && quality <= 5;
         if (quality > std::numeric_limits<std::uint8_t>::max()) {
             result.error = NmeaError::malformed;
             return result;
         }
         sentence.fix_quality = static_cast<std::uint8_t>(quality);
         int satellites = 0;
-        if (!parse_integer(fields[7], satellites) || satellites < 0 || satellites > std::numeric_limits<std::uint8_t>::max()) {
+        if (fields[7].size() != 2U || !parse_integer(fields[7], satellites) || satellites < 0 ||
+            satellites > std::numeric_limits<std::uint8_t>::max()) {
             result.error = NmeaError::malformed;
             return result;
         }
@@ -289,27 +318,86 @@ ParseResult parse_nmea_sentence(std::string_view line) {
     return result;
 }
 
-std::optional<CurrentFix> FixAccumulator::ingest(const NmeaSentence& sentence) {
+std::optional<NmeaFrame> NmeaLineFramer::push(char byte) {
+    if (byte == '\r') return std::nullopt;
+    if (discarding_) {
+        if (byte == '\n') discarding_ = false;
+        return std::nullopt;
+    }
+    if (byte == '\n') {
+        if (buffer_.empty()) return std::nullopt;
+        NmeaFrame frame{NmeaFrameKind::Complete, std::move(buffer_)};
+        buffer_.clear();
+        return frame;
+    }
+    if (buffer_.size() >= maximum_bytes_) {
+        buffer_.clear();
+        discarding_ = true;
+        return NmeaFrame{NmeaFrameKind::Overlong, {}};
+    }
+    buffer_.push_back(byte);
+    return std::nullopt;
+}
+
+void NmeaLineFramer::reset() {
+    buffer_.clear();
+    discarding_ = false;
+}
+
+FixIngestResult FixAccumulator::ingest(const NmeaSentence& sentence) {
+    if (!sentence.receiver_fix_valid) {
+        clear_pending();
+        return {{}, true};
+    }
     if (sentence.kind == NmeaKind::rmc) {
-        if (sentence.receiver_fix_valid && sentence.position && sentence.utc_time && sentence.utc_date) {
-            latest_rmc_ = sentence;
-        } else {
-            latest_rmc_.reset();
+        if (!sentence.position || !sentence.utc_time || !sentence.utc_date) {
+            clear_pending();
+            return {{}, true};
         }
-        return std::nullopt;
+        latest_rmc_ = sentence;
+    } else {
+        if (!sentence.position || !sentence.utc_time) {
+            clear_pending();
+            return {{}, true};
+        }
+        latest_gga_ = sentence;
     }
-    if (!sentence.receiver_fix_valid || !sentence.position || !sentence.utc_time || !latest_rmc_ ||
-        !latest_rmc_->position || !latest_rmc_->utc_time || !latest_rmc_->utc_date ||
-        *sentence.utc_time != *latest_rmc_->utc_time ||
-        !positions_agree(*sentence.position, *latest_rmc_->position)) {
-        return std::nullopt;
+    if (!latest_rmc_ || !latest_gga_ || !latest_rmc_->position || !latest_gga_->position ||
+        !latest_rmc_->utc_time || !latest_gga_->utc_time || !latest_rmc_->utc_date) {
+        return {};
     }
-    return CurrentFix{*latest_rmc_->position, *latest_rmc_->utc_time, *latest_rmc_->utc_date,
-                      sentence.fix_quality, sentence.satellites_used};
+    if (*latest_rmc_->utc_time != *latest_gga_->utc_time) {
+        return {};
+    }
+    if (!positions_agree(*latest_rmc_->position, *latest_gga_->position)) {
+        clear_pending();
+        return {{}, true};
+    }
+    const CurrentFix fix{*latest_rmc_->position, *latest_rmc_->utc_time, *latest_rmc_->utc_date,
+                         latest_gga_->fix_quality, latest_gga_->satellites_used};
+    const auto epoch_key = [](const CurrentFix& value) {
+        return std::tuple{value.utc_date.year, value.utc_date.month, value.utc_date.day,
+                          value.utc_time.hour, value.utc_time.minute, value.utc_time.second,
+                          value.utc_time.centisecond};
+    };
+    if (last_emitted_fix_ && epoch_key(fix) <= epoch_key(*last_emitted_fix_)) {
+        clear_pending();
+        return {{}, true};
+    }
+    // Each epoch can produce at most one fix and can never be reused later.
+    last_emitted_fix_ = fix;
+    clear_pending();
+    return {fix, false};
+}
+
+void FixAccumulator::clear_pending() {
+    latest_rmc_.reset();
+    latest_gga_.reset();
 }
 
 void FixAccumulator::clear() {
-    latest_rmc_.reset();
+    clear_pending();
+    last_emitted_fix_.reset();
 }
 
 }  // namespace locator

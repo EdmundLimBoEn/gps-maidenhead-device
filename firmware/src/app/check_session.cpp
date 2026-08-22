@@ -7,6 +7,15 @@ namespace pocket_locator::app {
 
 CheckSession::CheckSession(SessionSettings settings) : settings_(std::move(settings)) {}
 
+std::optional<std::uint8_t> CheckSession::factory_reset_countdown_seconds(
+    std::uint64_t now_ms) const {
+    if (!both_down() || !has_accepted_session() || now_ms < both_down_at_ms_) return std::nullopt;
+    const auto elapsed = now_ms - both_down_at_ms_;
+    if (elapsed >= settings_.factory_reset_hold_ms) return std::nullopt;
+    const auto remaining = settings_.factory_reset_hold_ms - elapsed;
+    return static_cast<std::uint8_t>((remaining + 999U) / 1'000U);
+}
+
 bool CheckSession::has_accepted_session() const {
     return state_ == State::Acquiring || state_ == State::DisplayFix || state_ == State::Dimmed ||
            state_ == State::NoGps || state_ == State::FactoryReset;
@@ -17,6 +26,7 @@ void CheckSession::enter_idle_or_off(Update& update) {
     displayed_grid_.clear();
     clear_tracking_candidate();
     backlight_ = Backlight::Off;
+    success_flash_active_ = false;
     if (usb_present_) {
         state_ = State::UsbIdle;
         return;
@@ -26,6 +36,7 @@ void CheckSession::enter_idle_or_off(Update& update) {
 }
 
 void CheckSession::start_acquiring() {
+    session_epoch_ms_ = locate_down_at_ms_;
     state_ = State::Acquiring;
     backlight_ = Backlight::Normal;
     gnss_active_ = true;
@@ -69,8 +80,8 @@ Update CheckSession::button_down(Button button, std::uint64_t now_ms) {
             return update;
         }
         locate_down_ = true;
-        locate_down_at_ms_ = now_ms;
         if (state_ == State::Off || state_ == State::UsbIdle) {
+            locate_down_at_ms_ = now_ms;
             state_ = State::PressCheck;
             backlight_ = Backlight::Off;
         }
@@ -145,9 +156,9 @@ Update CheckSession::tick(std::uint64_t now_ms) {
         return update;
     }
 
-    const std::uint64_t acquisition_timeout_at = locate_down_at_ms_ + settings_.acquisition_timeout_ms;
-    const std::uint64_t dim_at = locate_down_at_ms_ + settings_.dim_deadline_ms;
-    const std::uint64_t shutdown_at = locate_down_at_ms_ + settings_.shutdown_deadline_ms;
+    const std::uint64_t acquisition_timeout_at = session_epoch_ms_ + settings_.acquisition_timeout_ms;
+    const std::uint64_t dim_at = session_epoch_ms_ + settings_.dim_deadline_ms;
+    const std::uint64_t shutdown_at = session_epoch_ms_ + settings_.shutdown_deadline_ms;
     if (state_ == State::Acquiring && now_ms >= acquisition_timeout_at) {
         state_ = State::NoGps;
         gnss_active_ = false;
@@ -160,7 +171,16 @@ Update CheckSession::tick(std::uint64_t now_ms) {
         return update;
     }
 
-    if (now_ms >= dim_at) {
+    if (success_flash_active_) {
+        if (now_ms < success_flash_until_ms_) {
+            backlight_ = Backlight::Off;
+        } else {
+            success_flash_active_ = false;
+            backlight_ = now_ms >= dim_at ? Backlight::Dim : Backlight::Normal;
+        }
+    }
+
+    if (now_ms >= dim_at && !success_flash_active_) {
         backlight_ = Backlight::Dim;
         if (state_ == State::DisplayFix) {
             state_ = State::Dimmed;
@@ -184,6 +204,11 @@ Update CheckSession::valid_fix(std::string_view grid6, std::uint64_t now_ms) {
         displayed_grid_ = std::string(grid6);
         last_grid_render_ms_ = now_ms;
         state_ = Backlight::Dim == backlight_ ? State::Dimmed : State::DisplayFix;
+        success_flash_active_ = settings_.success_flash_ms != 0;
+        success_flash_until_ms_ = now_ms + settings_.success_flash_ms;
+        if (success_flash_active_) {
+            backlight_ = Backlight::Off;
+        }
         update.display_changed = true;
         if (settings_.gnss_mode == GnssMode::SingleFix) {
             gnss_active_ = false;

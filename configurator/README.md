@@ -23,3 +23,10 @@ For a physical device, click **Refresh USB**, select the RP2040 CDC port, and
 click **Connect**. The Device screen reports firmware, hardware, configuration
 health, and non-persistent diagnostics. If discovery finds nothing, verify that
 the cable carries data and that local serial-port permissions allow access.
+
+Normal firmware installation validates the RP2040 UF2, requires a profile
+backup, enters ROM BOOTSEL, copies without unsupported filesystem metadata, and
+waits for the boot volume to disappear before reconnecting. If application
+firmware cannot start, use **Install using BOOTSEL recovery…** after attaching
+the device with its internal BOOTSEL control held. ROM volumes are recognized
+by their `RPI-RP2` name or `INFO_UF2.TXT`, including Windows drive roots.

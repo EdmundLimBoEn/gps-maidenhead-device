@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -10,6 +11,10 @@ DATE_FORMATS = {"DD/MM", "MM/DD", "DDMMM", "YYYY-MM-DD"}
 GNSS_MODES = {"single_fix", "tracking"}
 MAX_TIMEZONE_TRANSITIONS = 48
 MAX_TIMEZONE_ABBREVIATION_BYTES = 8
+MAX_DISPLAY_BLOCKS = 12
+MAX_TIMEOUT_SECONDS = 600
+MAX_TRACKING_INTERVAL_SECONDS = 60
+_TIMEZONE_RE = re.compile(r"^[A-Za-z0-9_+./-]+$")
 
 
 class ConfigError(ValueError):
@@ -75,6 +80,8 @@ class DeviceConfig:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> DeviceConfig:
+        if not isinstance(value, dict):
+            raise ConfigError("configuration must be an object")
         allowed = set(cls.__dataclass_fields__)
         unknown = set(value) - allowed
         if unknown:
@@ -94,22 +101,41 @@ class DeviceConfig:
         return config
 
     def validate(self) -> None:
-        if self.schema_version != SCHEMA_VERSION:
+        if type(self.schema_version) is not int or self.schema_version != SCHEMA_VERSION:
             raise ConfigError("unsupported schema_version")
-        if self.top_template != "GRID: {grid6}":
+        if not isinstance(self.top_template, str) or self.top_template != "GRID: {grid6}":
             raise ConfigError("top_template must be 'GRID: {grid6}' in V1")
-        if self.gnss_mode not in GNSS_MODES:
+        if not isinstance(self.gnss_mode, str) or self.gnss_mode not in GNSS_MODES:
             raise ConfigError("invalid gnss_mode")
-        if self.date_format not in DATE_FORMATS:
+        if not isinstance(self.date_format, str) or self.date_format not in DATE_FORMATS:
             raise ConfigError("invalid date_format")
-        if not self.timezone or len(self.timezone) > 64:
+        if type(self.clock_24h) is not bool or type(self.show_seconds) is not bool:
+            raise ConfigError("clock settings must be booleans")
+        if (
+            not isinstance(self.timezone, str)
+            or not self.timezone
+            or len(self.timezone) > 64
+            or _TIMEZONE_RE.fullmatch(self.timezone) is None
+        ):
             raise ConfigError("invalid timezone")
-        if self.tracking_interval_seconds < 5:
-            raise ConfigError("tracking interval must be at least 5 seconds")
-        if self.acquisition_timeout_seconds < 1:
-            raise ConfigError("acquisition timeout must be positive")
-        if self.dim_deadline_seconds < 0:
-            raise ConfigError("dim deadline cannot be negative")
+        numeric_values = (
+            self.tracking_interval_seconds,
+            self.acquisition_timeout_seconds,
+            self.dim_deadline_seconds,
+            self.shutdown_deadline_seconds,
+            self.normal_brightness_percent,
+            self.dim_brightness_percent,
+        )
+        if any(type(value) is not int for value in numeric_values):
+            raise ConfigError("numeric settings must be integers")
+        if not 5 <= self.tracking_interval_seconds <= MAX_TRACKING_INTERVAL_SECONDS:
+            raise ConfigError("tracking interval must be between 5 and 60 seconds")
+        if not 1 <= self.acquisition_timeout_seconds <= MAX_TIMEOUT_SECONDS:
+            raise ConfigError("acquisition timeout must be between 1 and 600 seconds")
+        if not 0 <= self.dim_deadline_seconds <= MAX_TIMEOUT_SECONDS:
+            raise ConfigError("dim deadline must be between 0 and 600 seconds")
+        if not 1 <= self.shutdown_deadline_seconds <= MAX_TIMEOUT_SECONDS:
+            raise ConfigError("shutdown deadline must be between 1 and 600 seconds")
         if self.shutdown_deadline_seconds < self.dim_deadline_seconds:
             raise ConfigError("shutdown deadline cannot precede dim deadline")
         if self.acquisition_timeout_seconds > self.shutdown_deadline_seconds:
@@ -122,7 +148,10 @@ class DeviceConfig:
                 raise ConfigError(f"{name} must be between 0 and 100")
         if self.dim_brightness_percent > self.normal_brightness_percent:
             raise ConfigError("dim brightness cannot exceed normal brightness")
-        if not isinstance(self.bottom_blocks, list):
+        if (
+            not isinstance(self.bottom_blocks, list)
+            or not 1 <= len(self.bottom_blocks) <= MAX_DISPLAY_BLOCKS
+        ):
             raise ConfigError("bottom_blocks must be a list")
         render_bottom(self, worst_case=True)
         if self.timezone_table is not None:
@@ -148,7 +177,10 @@ class DeviceConfig:
         unknown = set(table) - expected
         missing = expected - set(table)
         if unknown or missing:
-            details = [*([f"unknown fields: {', '.join(sorted(unknown))}"] if unknown else []), *([f"missing fields: {', '.join(sorted(missing))}"] if missing else [])]
+            details = [
+                *([f"unknown fields: {', '.join(sorted(unknown))}"] if unknown else []),
+                *([f"missing fields: {', '.join(sorted(missing))}"] if missing else []),
+            ]
             raise ConfigError("invalid timezone_table (" + "; ".join(details) + ")")
         if table["zone_name"] != self.timezone:
             raise ConfigError("timezone_table zone does not match timezone")
@@ -168,29 +200,35 @@ class DeviceConfig:
         if expires_utc < required_expiry:
             raise ConfigError("timezone_table must cover at least 15 years")
         expiry = table["expiry_year"]
-        if not isinstance(expiry, int) or expiry != expires_utc.year:
+        if type(expiry) is not int or expiry != expires_utc.year:
             raise ConfigError("timezone_table expiry_year does not match expires_at")
-        self._validate_timezone_state(table["initial_offset_seconds"], table["initial_abbreviation"])
+        self._validate_timezone_state(
+            table["initial_offset_seconds"], table["initial_abbreviation"]
+        )
         transitions = table["transitions"]
         if not isinstance(transitions, list):
             raise ConfigError("timezone_table transitions must be a list")
         if len(transitions) > MAX_TIMEZONE_TRANSITIONS:
-            raise ConfigError(f"timezone_table has more than {MAX_TIMEZONE_TRANSITIONS} transitions")
+            raise ConfigError(
+                f"timezone_table has more than {MAX_TIMEZONE_TRANSITIONS} transitions"
+            )
         previous_epoch: int | None = None
         for transition in transitions:
             if not isinstance(transition, dict) or set(transition) != {
-                "utc_epoch", "offset_seconds", "abbreviation"
+                "utc_epoch",
+                "offset_seconds",
+                "abbreviation",
             }:
                 raise ConfigError("invalid timezone transition")
             epoch = transition["utc_epoch"]
-            if not isinstance(epoch, int) or (previous_epoch is not None and epoch <= previous_epoch):
+            if type(epoch) is not int or (previous_epoch is not None and epoch <= previous_epoch):
                 raise ConfigError("timezone transitions must have increasing UTC epochs")
             self._validate_timezone_state(transition["offset_seconds"], transition["abbreviation"])
             previous_epoch = epoch
 
     @staticmethod
     def _validate_timezone_state(offset: Any, abbreviation: Any) -> None:
-        if not isinstance(offset, int) or not -12 * 3600 <= offset <= 14 * 3600:
+        if type(offset) is not int or not -12 * 3600 <= offset <= 14 * 3600:
             raise ConfigError("timezone offset is out of range")
         if not isinstance(abbreviation, str) or not abbreviation:
             raise ConfigError("timezone abbreviation is invalid")
@@ -215,14 +253,22 @@ def render_bottom(config: DeviceConfig, *, worst_case: bool = False) -> str:
     for block in config.bottom_blocks:
         if not isinstance(block, DisplayBlock):
             raise ConfigError("bottom_blocks contains an invalid block")
+        if not isinstance(block.value, str) or len(block.value) > 16:
+            raise ConfigError("display block values must be strings of at most 16 characters")
         if block.kind == "battery":
+            if block.value:
+                raise ConfigError("battery blocks cannot contain text")
             text = "#"
         elif block.kind == "time":
+            if block.value:
+                raise ConfigError("time blocks cannot contain text")
             if config.clock_24h:
                 text = "23:59:59" if config.show_seconds else "23:59"
             else:
                 text = "12:59:59 PM" if config.show_seconds else "12:59 PM"
         elif block.kind == "date":
+            if block.value:
+                raise ConfigError("date blocks cannot contain text")
             text = {
                 "DD/MM": "31/12",
                 "MM/DD": "12/31",
@@ -230,8 +276,8 @@ def render_bottom(config: DeviceConfig, *, worst_case: bool = False) -> str:
                 "YYYY-MM-DD": "2099-12-31",
             }[config.date_format]
         elif block.kind == "space":
-            text = block.value or " "
-            if set(text) != {" "}:
+            text = block.value
+            if not text or set(text) != {" "}:
                 raise ConfigError("space blocks may contain only spaces")
         elif block.kind == "separator":
             text = block.value

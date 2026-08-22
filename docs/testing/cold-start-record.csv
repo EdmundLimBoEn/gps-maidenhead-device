@@ -1,2 +1,1 @@
-unit_serial,pcb_revision,enclosure_revision,firmware_revision,trial,utc_date,ambient_c,orientation,fix_seconds,valid_grid,satellites,fix_quality,pass,notes
-
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,trial,utc_date,operator,site_id,ambient_c,orientation,backup_discharge_minutes,receiver_backup_voltage_v,timer_equipment,fix_seconds,valid_grid,satellites,fix_quality,independent_oracle,pass,evidence_hash,notes

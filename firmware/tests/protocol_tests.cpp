@@ -3,6 +3,9 @@
 
 #include "pocket_locator/usb/protocol.hpp"
 
+#include <array>
+#include <string_view>
+
 namespace {
 
 using pocket_locator::usb::Command;
@@ -58,6 +61,10 @@ TEST(protocol_rejects_missing_malformed_unsupported_and_unknown_requests) {
     result = parse_request("{\"protocol_version\":1,\"request_id\":\"x\",\"command\":");
     REQUIRE_EQ(*result.error, ErrorCode::InvalidJson);
 
+    result = parse_request(
+        "{\"protocol_version\":1,\"request_id\":\"x\",\"command\":\"hello\",\"x\":junk}");
+    REQUIRE_EQ(*result.error, ErrorCode::InvalidJson);
+
     result = parse_request("{\"protocol_version\":2,\"request_id\":\"x\",\"command\":\"hello\"}");
     REQUIRE_EQ(*result.error, ErrorCode::UnsupportedProtocol);
 
@@ -76,10 +83,34 @@ TEST(protocol_rejects_duplicate_or_invalid_envelope_fields_and_emits_stable_erro
     result = parse_request("{\"protocol_version\":1,\"request_id\":\"not valid\",\"command\":\"hello\"}");
     REQUIRE_EQ(*result.error, ErrorCode::InvalidField);
 
+    result = parse_request(
+        "{\"protocol_version\":1,\"request_id\":\"x\",\"command\":\"hello\",\"unexpected\":true}");
+    REQUIRE_EQ(*result.error, ErrorCode::InvalidField);
+
+    result = parse_request(
+        "{\"protocol_version\":1,\"request_id\":\"x\",\"command\":\"set_config\"}");
+    REQUIRE_EQ(*result.error, ErrorCode::InvalidField);
+
     result = parse_request(std::string(pocket_locator::usb::kMaxMessageBytes + 1U, ' '));
     REQUIRE_EQ(*result.error, ErrorCode::MessageTooLarge);
 
     REQUIRE_EQ(pocket_locator::usb::error_response("x", ErrorCode::UnknownCommand),
                std::string("{\"request_id\":\"x\",\"ok\":false,\"error\":{\"code\":\"unknown_command\","
                            "\"message\":\"unknown_command\"}}\n"));
+}
+
+TEST(strict_json_object_keys_reject_unknown_duplicate_and_malformed_values) {
+    static constexpr std::array<std::string_view, 2> keys{"schema_version", "enabled"};
+    REQUIRE(pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":1,\"enabled\":true}", keys));
+    REQUIRE(!pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":1,\"enabled\":true,\"unknown\":0}", keys));
+    REQUIRE(!pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":1,\"schema_version\":1}", keys));
+    REQUIRE(!pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":1junk,\"enabled\":true}", keys));
+    REQUIRE(!pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":01,\"enabled\":true}", keys));
+    REQUIRE(!pocket_locator::usb::object_has_exact_keys(
+        "{\"schema_version\":1,\"enabled\":truejunk}", keys));
 }

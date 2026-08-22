@@ -29,7 +29,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -e "./configurator[dev]"
       - run: python -m pytest configurator/tests
-      - run: python -m ruff check configurator
+      - run: python -m ruff check configurator tools
+      - run: python -m ruff format --check configurator tools
+
+  configurator-gui-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-tk python3-venv xvfb
+      - run: python3 -m venv build/gui-venv
+      - run: build/gui-venv/bin/python -m pip install -e "./configurator[dev]"
+      - run: xvfb-run -a build/gui-venv/bin/python -m pytest configurator/tests/test_app.py
 
   release-source-artifacts:
     runs-on: ubuntu-latest
@@ -38,13 +48,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python hardware/manufacturing/preflight.py --source-only
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends kicad openscad xvfb
+      - run: python hardware/kicad/generate_kicad.py
+      - run: >-
+          git diff --exit-code --
+          hardware/kicad/maidenhead-pocket-locator.sch
+          hardware/kicad/maidenhead-pocket-locator-cache.lib
+          hardware/kicad/maidenhead-pocket-locator.kicad_pcb
+      - run: python hardware/manufacturing/preflight.py
+      - run: hardware/manufacturing/export.sh
+      - run: python tools/validate_enclosure.py --require-openscad
       - run: python tools/release_preflight.py
 
   rp2040-firmware:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: bash firmware/tests/pico_stub_compile.sh
       - uses: actions/checkout@v4
         with:
           repository: raspberrypi/pico-sdk
@@ -58,3 +78,5 @@ jobs:
           -DPOCKET_LOCATOR_BUILD_HOST_TESTS=OFF
           -DPOCKET_LOCATOR_BUILD_RP2040=ON
       - run: cmake --build build/rp2040
+      - run: cmp build/rp2040/pocket_locator_rp2040.uf2 firmware/releases/pocket_locator_rp2040.uf2
+      - run: sha256sum -c firmware/releases/SHA256SUMS

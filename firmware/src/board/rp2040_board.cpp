@@ -22,9 +22,11 @@ void BatteryAdc::init() {
     adc_select_input(static_cast<unsigned>(pins_.battery_adc - 26U));
 }
 
-BatteryReading BatteryAdc::read() const {
+void BatteryAdc::begin_read() const {
     gpio_put(pins_.battery_sense_enable, true);
-    sleep_us(50);
+}
+
+BatteryReading BatteryAdc::finish_read() const {
     adc_select_input(static_cast<unsigned>(pins_.battery_adc - 26U));
     const std::uint16_t raw = adc_read();
     const std::uint32_t pin_mv = (static_cast<std::uint32_t>(raw) * 3300U) / 4095U;
@@ -40,6 +42,12 @@ BatteryReading BatteryAdc::read() const {
             static_cast<std::uint16_t>(std::min<std::uint32_t>(mv, UINT16_MAX)),
             static_cast<std::uint8_t>(percent),
             static_cast<std::int16_t>(std::clamp<std::int32_t>(temperature_centi, -4000, 12500))};
+}
+
+BatteryReading BatteryAdc::read() const {
+    begin_read();
+    sleep_us(kBatteryDividerSettleUs);
+    return finish_read();
 }
 
 }  // namespace pocket_locator::board

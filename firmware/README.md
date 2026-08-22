@@ -42,12 +42,14 @@ PCB revision.
 | --- | ---: | --- |
 | LOCATE / OFF | 2 / 3 | Active-low switches using internal pull-ups and 25 ms polling debounce |
 | POWER_HOLD | 4 | High holds the system latch; firmware releases it on shutdown |
-| LCD RS, E, D4–D7 | 6–11 | 3.3 V outputs into the 74AHCT245; LCD R/W is grounded |
+| LCD 5 V enable | 5 | Active-high TPS61023 enable; remains low in USB idle |
+| LCD RS, E, D4–D7 | 6–11 | 3.3 V outputs into the SN74LVC8T245PWR A-side; LCD R/W is grounded |
 | LCD backlight | 12 | PWM into the logic-level backlight MOSFET |
 | GP-02 UART TX/RX | 16 / 17 | UART0 at 9,600 8N1; RX is receiver output |
-| GNSS enable | 18 | Active-high switched receiver enable |
-| Battery divider | 26 / ADC0 | Default divider ratio is 2:1; calibrate it for the final resistor values |
-| USB VBUS / charger status | 19 / 20 | VBUS active-high; charger status active-low/open-drain |
+| GNSS enable | 18 | Active-high switched receiver enable; firmware waits 5 ms for the rail before assigning UART pins |
+| Battery divider | 26 / ADC0 | 100 kΩ / 100 kΩ (2:1) with 100 nF; firmware waits 30 ms (6× the 5 ms RC constant) before sampling |
+| USB VBUS / charger status | 19 / 20 | VBUS active-high; USB device pull-up is enabled only while VBUS is present; charger status active-low/open-drain |
+| Battery-divider enable | 21 | Active-high only for the ADC sampling window |
 
 The selected power circuit must permit USB VBUS to sustain the MCU after
 `POWER_HOLD` is released. `POWER_HOLD` must not be connected to any reset or
@@ -68,6 +70,7 @@ verification, then a one-way commit marker. The application image must remain
 below that reserved tail. Check the generated `.elf`/map in release CI and do
 not change the configured flash size without revisiting this reservation.
 
-The write implementation is intentionally self-contained so a power loss at
-any point leaves the previous committed record valid. A factory reset only
-erases those two records; it never erases application firmware.
+The linker asserts that the image ends before the reserved region. A power loss
+at any write phase leaves the previous committed record valid. Factory reset
+commits defaults through the same inactive-slot transaction; it never erases
+application firmware or destroys the prior record before defaults verify.

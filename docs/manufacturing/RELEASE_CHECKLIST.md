@@ -14,7 +14,9 @@
 ## Mechanical
 
 - [ ] PCB, LCD, window, buttons, USB, antenna, cell, gasket share one datum model
-- [ ] 85 × 41 × ≤35 mm envelope confirmed from exported geometry
+- [ ] Frozen XY coordinates in `enclosure/INTERFACES.md` match PCB and enclosure exports
+- [ ] Z stack and tolerances are frozen from exact drawings and measured samples
+- [ ] 88 × 44 × ≤35 mm engineering envelope confirmed from exported geometry
 - [ ] Coax and battery leads meet bend/strain clearance without forced compression
 - [ ] Unpopulated dimensional fit-check printed and measured
 - [ ] One complete enclosure printed before committing the remaining four
@@ -26,6 +28,7 @@
 - [ ] Assembly drawing shows DNP, polarity, and hand-installed parts
 - [ ] Test points and BOOTSEL/RUN recovery controls are labelled and accessible
 - [ ] Five-unit carts include tax, shipping, setup, minimums, and consumables
+- [ ] Cart destination, currency/FX, expiry, shipping method, and promotions recorded
 - [ ] Complete five-unit landed total is ≤US$150 before ordering
 
 ## Release evidence

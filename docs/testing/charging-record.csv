@@ -1,0 +1,1 @@
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,utc_date,operator,test_condition,usb_source,cell_or_fixture,ambient_c,ntc_resistance_ohm,vbus_v,input_current_ma,charge_current_ma,cell_temp_c,charge_led,system_operates,charge_inhibited_or_terminated,pass,evidence_hash,notes

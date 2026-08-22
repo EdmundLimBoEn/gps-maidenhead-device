@@ -50,7 +50,7 @@ Charger behavior that independently powers the system and charges the cell, allo
 The passive ceramic GNSS antenna mounted under the enclosure's top wall and connected to the GP-02 by short coax and u.FL/I-PEX.
 
 **Front profile**  
-The enclosure width and height seen from the LCD face, targeted at approximately 85 × 41 mm. Depth may grow to 35 mm.
+The enclosure width and height seen from the LCD face. The frozen engineering envelope is 88 × 44 mm, with total depth limited to 35 mm.
 
 **Weather goal**  
 Survival of drizzle, dust, and incidental sand exposure. It is not an IP rating and does not include immersion.

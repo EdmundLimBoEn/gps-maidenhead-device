@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "test_common.hpp"
 
+#include "pocket_locator/board/battery.hpp"
 #include "pocket_locator/config/config.hpp"
 
 namespace {
@@ -11,6 +12,13 @@ using pocket_locator::config::ValidationError;
 using pocket_locator::config::WriteInterruption;
 
 }  // namespace
+
+TEST(battery_divider_waits_at_least_five_rc_time_constants) {
+    using namespace pocket_locator::board;
+
+    REQUIRE_EQ(kBatteryDividerTimeConstantUs, 5'000U);
+    REQUIRE(kBatteryDividerSettleUs >= 5U * kBatteryDividerTimeConstantUs);
+}
 
 TEST(factory_settings_are_valid_and_stable) {
     const Settings defaults = pocket_locator::config::factory_defaults();

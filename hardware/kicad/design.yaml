@@ -6,19 +6,19 @@ revision: A-electrical
 board:
   width_mm: 81.0
   height_mm: 37.0
-  layers: 2
+  layers: 4
   thickness_mm: 1.6
-  stackup: "JLCPCB selected stack-up; recalculate GNSS CPWG before release"
+  stackup: "F.Cu signal/power, In1 solid GND, In2 3V3 power with LCD_RS_3V3 under 7 mm, LOCATE_N under 4 mm, and QSPI_SCLK/QSPI_SD2 under 6 mm, B.Cu signal/GND; USB and RF stay outer-layer; freeze vendor dielectric and recalculate USB/RF impedance before release"
 power_architecture:
   charger_source: "BQ24074 OUT is the sole SYS_RAW source; BAT never bypasses OUT"
   system_regulator: "TPS63802DLAR adjustable buck-boost, 3.3 V, 0.47 uH, 511k/91k feedback"
   start_logic: "TPS63802 EN is diode-OR of USB VBUS and Q1 signal-PMOS output"
-  locate_start: "LOCATE_N pulls Q1 gate low through D3; Q2 holds it from GPIO4"
+  locate_start: "SW1 pulls isolated LOCATE_RAW low; D3 starts Q1 and D5 reports LOCATE_N without an off-state 3V3-to-latch path"
   usb_idle: "VBUS forces 3V3 only; GPIO5 LCD_POWER_EN and GPIO18 GNSS_EN default low"
   off_state: "TPS63802 shutdown; charger/protected cell and signal latch remain BAT-connected"
 nets:
   power: [VBUS, BAT, SYS_RAW, PWR_EN, 3V3, 1V1, 3V3_GNSS, 5V_LCD, GND]
-  usb: [USB_DP_CONN, USB_DM_CONN, USB_DP_ESD, USB_DM_ESD, USB_DP, USB_DM, CC1, CC2]
+  usb: [VBUS_RAW, USB_DP_CONN, USB_DM_CONN, USB_DP, USB_DM, CC1, CC2]
   control: [LOCATE_N, OFF_N, POWER_HOLD, LCD_POWER_EN, GNSS_EN, BAT_SENSE_EN, VBUS_PRESENT, CHG_N]
   gnss: [GNSS_TX, GNSS_RX, GNSS_PPS, GNSS_RF_50R]
   lcd: [LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7, LCD_BL_A, LCD_BL_K, BL_PWM]
@@ -29,8 +29,8 @@ components:
   - {ref: U4, mpn: TPS63802DLAR, package: "VSON-HR-10 3x2", role: 3v3_buck_boost}
   - {ref: U5, mpn: TPS61023DRLR, package: "SOT-563-6", role: lcd_boost}
   - {ref: U6, mpn: SN74LVC8T245PWR, package: TSSOP-24, role: lcd_level_shift}
-  - {ref: U7, mpn: Ai-Thinker-GP-02, package: "castellated module; provisional footprint", role: GNSS}
-  - {ref: U8, mpn: TPS22916BYFPR, package: "DSBGA-4/engineering 6-pad land", role: gnss_load_switch}
+  - {ref: U7, mpn: Ai-Thinker-GP-02, package: "SMD-18 9.9x10.3 mm P1.12 manufacturer land", role: GNSS}
+  - {ref: U8, mpn: TPS22916BYFPR, package: "YFP DSBGA-4 0.78x0.78 mm P0.4", role: gnss_load_switch}
   - {ref: Q1, mpn: DMP3098L-7, role: signal_only_start_switch}
   - {ref: Q2, mpn: DMN2050L-7, role: power_hold_gate_pull_down}
   - {ref: Q3, mpn: DMN2050L-7, role: lcd_backlight_pwm}
@@ -61,7 +61,7 @@ firmware_contract:
   GPIO26_ADC0: BAT_ADC
 release_blockers:
   - "Verify every footprint and pad number against the ordered manufacturer drawing."
-  - "Replace/prove provisional GP-02 and TPS22916 land patterns before assembly release."
+  - "Verify the GP-02 and TPS22916 footprints against the ordered lot/package markings before assembly release."
   - "Calculate GNSS 50-ohm CPWG width/clearance from the exact ordered stack-up."
   - "Run KiCad GUI ERC/DRC and archive zero-unreviewed-error reports."
   - "Measure LCD current, charge/NTC, shutdown current, RF and thermal behavior."

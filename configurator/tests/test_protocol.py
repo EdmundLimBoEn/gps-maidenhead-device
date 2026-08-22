@@ -18,7 +18,7 @@ def test_transactional_config_round_trip() -> None:
     saved = client.request("set_config", config=payload)
     assert saved == client.request("get_config")
     assert saved["gnss_mode"] == "tracking"
-    assert saved["timezone_table"]["zone_name"] == "Asia/Singapore"
+    assert "timezone_table" not in saved
 
 
 def test_invalid_config_does_not_replace_current() -> None:
@@ -58,3 +58,9 @@ def test_client_rejects_unknown_command() -> None:
     with pytest.raises(ProtocolError) as error:
         Client(SimulatedTransport()).request("erase_everything")
     assert error.value.code == "unknown_command"
+
+
+def test_client_protects_protocol_envelope() -> None:
+    with pytest.raises(ProtocolError) as error:
+        Client(SimulatedTransport()).request("hello", request_id="replaced")
+    assert error.value.code == "invalid_payload"

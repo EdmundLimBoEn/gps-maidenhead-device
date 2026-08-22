@@ -20,6 +20,6 @@ struct FormattedFixScreen {
 // use CGRAM slots 0..4 and are therefore intentionally non-printable bytes.
 [[nodiscard]] FormattedFixScreen format_fix_screen(const config::Settings& settings, std::string_view grid,
                                                     const locator::CurrentFix& fix, std::uint8_t battery_percent,
-                                                    bool charging);
+                                                    bool charging, std::uint64_t elapsed_seconds = 0);
 
 }  // namespace pocket_locator::display

@@ -1,0 +1,3 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+ASSERT(__flash_binary_end <= 0x101fe000,
+       "firmware overlaps the final 8 KiB atomic configuration region")

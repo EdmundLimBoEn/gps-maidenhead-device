@@ -18,7 +18,9 @@ class SimulatedTransport:
     def transact(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id")
         if request.get("protocol_version") != PROTOCOL_VERSION:
-            return self._error(request_id, "unsupported_protocol", "protocol version is unsupported")
+            return self._error(
+                request_id, "unsupported_protocol", "protocol version is unsupported"
+            )
         command = request.get("command")
         if command not in COMMANDS:
             return self._error(request_id, "unknown_command", "command is not supported")
@@ -38,7 +40,7 @@ class SimulatedTransport:
         if command == "get_info":
             return {"firmware_version": "0.1.0-sim", "hardware_revision": "sim"}
         if command == "get_config":
-            return deepcopy(self.config.to_dict(include_timezone_table=True))
+            return deepcopy(self.config.to_dict())
         if command == "validate_config":
             DeviceConfig.from_dict(request["config"]).validate_device_payload()
             return {"valid": True}
@@ -46,7 +48,7 @@ class SimulatedTransport:
             candidate = DeviceConfig.from_dict(request["config"])
             candidate.validate_device_payload()
             self.config = candidate
-            return deepcopy(self.config.to_dict(include_timezone_table=True))
+            return deepcopy(self.config.to_dict())
         if command == "get_diagnostics":
             return {
                 "config_crc_healthy": True,

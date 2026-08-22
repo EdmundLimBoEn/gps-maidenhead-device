@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pocket_locator/usb/protocol.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <limits>
+#include <vector>
 
 namespace pocket_locator::usb {
 namespace {
@@ -49,57 +51,92 @@ bool parse_string(std::string_view text, std::size_t& index, std::string& value)
     return false;
 }
 
-bool value_is_structurally_valid(std::string_view text) {
-    std::size_t index = 0;
+bool skip_json_value(std::string_view text, std::size_t& index);
+
+bool skip_json_object(std::string_view text, std::size_t& index) {
+    if (index >= text.size() || text[index++] != '{') return false;
     skip_spaces(text, index);
-    if (index >= text.size() || text[index] != '{') {
+    if (index < text.size() && text[index] == '}') { ++index; return true; }
+    while (index < text.size()) {
+        std::string key;
+        if (!parse_string(text, index, key)) return false;
+        skip_spaces(text, index);
+        if (index >= text.size() || text[index++] != ':') return false;
+        if (!skip_json_value(text, index)) return false;
+        skip_spaces(text, index);
+        if (index < text.size() && text[index] == '}') { ++index; return true; }
+        if (index >= text.size() || text[index++] != ',') return false;
+        skip_spaces(text, index);
+    }
+    return false;
+}
+
+bool skip_json_value(std::string_view text, std::size_t& index) {
+    skip_spaces(text, index);
+    if (index >= text.size()) return false;
+    if (text[index] == '{') return skip_json_object(text, index);
+    if (text[index] == '[') {
+        ++index;
+        skip_spaces(text, index);
+        if (index < text.size() && text[index] == ']') { ++index; return true; }
+        while (index < text.size()) {
+            if (!skip_json_value(text, index)) return false;
+            skip_spaces(text, index);
+            if (index < text.size() && text[index] == ']') { ++index; return true; }
+            if (index >= text.size() || text[index++] != ',') return false;
+        }
         return false;
     }
-    int object_depth = 0;
-    int array_depth = 0;
-    bool in_string = false;
-    bool escaping = false;
-    bool root_closed = false;
-    for (; index < text.size(); ++index) {
-        const char current = text[index];
-        if (root_closed) {
-            if (std::isspace(static_cast<unsigned char>(current)) == 0) {
-                return false;
-            }
-            continue;
-        }
-        if (in_string) {
-            if (escaping) {
-                escaping = false;
-            } else if (current == '\\') {
-                escaping = true;
-            } else if (current == '"') {
-                in_string = false;
-            } else if (static_cast<unsigned char>(current) < 0x20U) {
-                return false;
-            }
-            continue;
-        }
-        if (current == '"') {
-            in_string = true;
-        } else if (current == '{') {
-            ++object_depth;
-        } else if (current == '}') {
-            if (--object_depth < 0) {
-                return false;
-            }
-            if (object_depth == 0 && array_depth == 0) {
-                root_closed = true;
-            }
-        } else if (current == '[') {
-            ++array_depth;
-        } else if (current == ']') {
-            if (--array_depth < 0) {
-                return false;
-            }
-        }
+    if (text[index] == '"') {
+        std::string ignored;
+        return parse_string(text, index, ignored);
     }
-    return !in_string && !escaping && root_closed && object_depth == 0 && array_depth == 0;
+    for (const auto literal : {std::string_view{"true"}, std::string_view{"false"}, std::string_view{"null"}}) {
+        if (text.substr(index).starts_with(literal)) { index += literal.size(); return true; }
+    }
+    std::size_t cursor = index;
+    if (text[cursor] == '-') ++cursor;
+    if (cursor >= text.size() || text[cursor] < '0' || text[cursor] > '9') return false;
+    if (text[cursor] == '0') ++cursor;
+    else while (cursor < text.size() && text[cursor] >= '0' && text[cursor] <= '9') ++cursor;
+    if (cursor < text.size() && text[cursor] == '.') {
+        ++cursor;
+        const auto fraction = cursor;
+        while (cursor < text.size() && text[cursor] >= '0' && text[cursor] <= '9') ++cursor;
+        if (cursor == fraction) return false;
+    }
+    if (cursor < text.size() && (text[cursor] == 'e' || text[cursor] == 'E')) {
+        ++cursor;
+        if (cursor < text.size() && (text[cursor] == '+' || text[cursor] == '-')) ++cursor;
+        const auto exponent = cursor;
+        while (cursor < text.size() && text[cursor] >= '0' && text[cursor] <= '9') ++cursor;
+        if (cursor == exponent) return false;
+    }
+    index = cursor;
+    return true;
+}
+
+bool immediate_object_keys(std::string_view text, std::vector<std::string>& keys) {
+    std::size_t index = 0;
+    skip_spaces(text, index);
+    if (index >= text.size() || text[index++] != '{') return false;
+    skip_spaces(text, index);
+    if (index < text.size() && text[index] == '}') { ++index; skip_spaces(text, index); return index == text.size(); }
+    while (index < text.size()) {
+        std::string key;
+        if (!parse_string(text, index, key)) return false;
+        keys.push_back(std::move(key));
+        skip_spaces(text, index);
+        if (index >= text.size() || text[index++] != ':') return false;
+        if (!skip_json_value(text, index)) return false;
+        skip_spaces(text, index);
+        if (index < text.size() && text[index] == '}') {
+            ++index; skip_spaces(text, index); return index == text.size();
+        }
+        if (index >= text.size() || text[index++] != ',') return false;
+        skip_spaces(text, index);
+    }
+    return false;
 }
 
 bool valid_request_id(std::string_view request_id) {
@@ -340,7 +377,8 @@ ParseResult parse_request(std::string_view json) {
     if (json.size() > kMaxMessageBytes) {
         return {{}, ErrorCode::MessageTooLarge};
     }
-    if (!value_is_structurally_valid(json)) {
+    std::vector<std::string> root_keys;
+    if (!immediate_object_keys(json, root_keys)) {
         return {{}, ErrorCode::InvalidJson};
     }
 
@@ -363,6 +401,18 @@ ParseResult parse_request(std::string_view json) {
     if (!parsed_command.has_value()) {
         return {{}, ErrorCode::UnknownCommand};
     }
+    static constexpr std::array<std::string_view, 3> kEnvelopeKeys{
+        "protocol_version", "request_id", "command"};
+    static constexpr std::array<std::string_view, 4> kConfigCommandKeys{
+        "protocol_version", "request_id", "command", "config"};
+    const bool has_config = *parsed_command == Command::ValidateConfig ||
+                            *parsed_command == Command::SetConfig;
+    const bool exact_keys = has_config
+                                ? object_has_exact_keys(json, kConfigCommandKeys)
+                                : object_has_exact_keys(json, kEnvelopeKeys);
+    if (!exact_keys) {
+        return {{}, ErrorCode::InvalidField};
+    }
     return {Request{kProtocolVersion, request_id.value, *parsed_command, std::string(json)}, {}};
 }
 
@@ -374,6 +424,8 @@ const char* error_code_name(ErrorCode code) {
         case ErrorCode::InvalidField: return "invalid_field";
         case ErrorCode::UnsupportedProtocol: return "unsupported_protocol";
         case ErrorCode::UnknownCommand: return "unknown_command";
+        case ErrorCode::StorageError: return "storage_error";
+        case ErrorCode::Busy: return "busy";
     }
     return "invalid_field";
 }
@@ -383,6 +435,15 @@ std::string error_response(std::string_view request_id, ErrorCode code) {
     return std::string{"{\"request_id\":\""} + std::string(request_id) +
            "\",\"ok\":false,\"error\":{\"code\":\"" + stable_code +
            "\",\"message\":\"" + stable_code + "\"}}\n";
+}
+
+bool object_has_exact_keys(std::string_view json, std::span<const std::string_view> expected_keys) {
+    std::vector<std::string> keys;
+    if (!immediate_object_keys(json, keys) || keys.size() != expected_keys.size()) return false;
+    for (const auto expected : expected_keys) {
+        if (std::count(keys.begin(), keys.end(), expected) != 1) return false;
+    }
+    return true;
 }
 
 }  // namespace pocket_locator::usb

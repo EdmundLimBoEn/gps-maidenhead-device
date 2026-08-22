@@ -1,2 +1,1 @@
-unit_serial,pcb_revision,firmware_revision,cell_voltage_v,ambient_c,state,current_ua,instrument,pass,notes
-
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,utc_date,operator,cell_voltage_v,ambient_c,state,settle_seconds,current_ua,instrument,calibration_due,input_burden_mv,pass,evidence_hash,notes

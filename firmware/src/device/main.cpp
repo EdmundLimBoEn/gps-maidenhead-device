@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <array>
+#include <cctype>
 #include <cstdio>
 #include <optional>
 #include <string>
@@ -6,6 +8,7 @@
 
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
+#include "pico/stdio_usb.h"
 
 #include "locator/maidenhead.h"
 #include "pocket_locator/app/check_session.hpp"
@@ -39,6 +42,12 @@ namespace {
 
 [[nodiscard]] const char* gnss_mode_name(pocket_locator::app::GnssMode mode) {
     return mode == pocket_locator::app::GnssMode::Tracking ? "tracking" : "single_fix";
+}
+
+[[nodiscard]] bool session_is_active(pocket_locator::app::State state) {
+    using pocket_locator::app::State;
+    return state == State::Acquiring || state == State::DisplayFix || state == State::Dimmed ||
+           state == State::NoGps || state == State::FactoryReset;
 }
 
 [[nodiscard]] const char* date_format_name(pocket_locator::config::DateFormat format) {
@@ -134,7 +143,11 @@ void response(std::string_view request_id, std::string_view data) {
         value = value * 10U + digit;
         ++index;
     }
-    return index == begin ? std::nullopt : std::optional<std::uint32_t>(value);
+    if (index == begin) return std::nullopt;
+    while (index < json.size() && std::isspace(static_cast<unsigned char>(json[index])) != 0) ++index;
+    return index == json.size() || json[index] == ',' || json[index] == '}'
+               ? std::optional<std::uint32_t>(value)
+               : std::nullopt;
 }
 
 [[nodiscard]] std::optional<bool> json_bool(std::string_view json, std::string_view key) {
@@ -143,9 +156,18 @@ void response(std::string_view request_id, std::string_view data) {
     if (field == std::string_view::npos) return std::nullopt;
     const auto colon = json.find(':', field + needle.size());
     if (colon == std::string_view::npos) return std::nullopt;
-    const auto value = json.substr(colon + 1U);
-    if (value.starts_with("true")) return true;
-    if (value.starts_with("false")) return false;
+    auto begin = colon + 1U;
+    while (begin < json.size() && (json[begin] == ' ' || json[begin] == '\t' ||
+                                   json[begin] == '\r' || json[begin] == '\n')) ++begin;
+    const auto value = json.substr(begin);
+    const auto token_matches = [&](std::string_view token) {
+        if (!value.starts_with(token)) return false;
+        auto end = token.size();
+        while (end < value.size() && std::isspace(static_cast<unsigned char>(value[end])) != 0) ++end;
+        return end == value.size() || value[end] == ',' || value[end] == '}';
+    };
+    if (token_matches("true")) return true;
+    if (token_matches("false")) return false;
     return std::nullopt;
 }
 
@@ -187,15 +209,22 @@ void response(std::string_view request_id, std::string_view data) {
     std::vector<pocket_locator::config::DisplayBlock> blocks;
     std::size_t cursor = open + 1U;
     while (cursor < *close) {
-        const auto begin = json.find('{', cursor);
-        if (begin == std::string_view::npos || begin >= *close) break;
+        while (cursor < *close && std::isspace(static_cast<unsigned char>(json[cursor])) != 0) ++cursor;
+        if (cursor == *close) break;
+        if (json[cursor] != '{') return std::nullopt;
+        const auto begin = cursor;
         const auto end = matching_delimiter(json, begin, '{', '}');
         if (!end || *end > *close) return std::nullopt;
         const auto object = json.substr(begin, *end - begin + 1U);
+        static constexpr std::array<std::string_view, 2> kBlockKeys{"kind", "value"};
+        if (!pocket_locator::usb::object_has_exact_keys(object, kBlockKeys)) return std::nullopt;
         const auto kind = json_string(object, "kind");
-        if (!kind || !block_kind(*kind)) return std::nullopt;
-        blocks.push_back({*block_kind(*kind), json_string(object, "value").value_or("")});
+        const auto value = json_string(object, "value");
+        if (!kind || !block_kind(*kind) || !value) return std::nullopt;
+        blocks.push_back({*block_kind(*kind), *value});
         cursor = *end + 1U;
+        while (cursor < *close && std::isspace(static_cast<unsigned char>(json[cursor])) != 0) ++cursor;
+        if (cursor < *close && json[cursor++] != ',') return std::nullopt;
     }
     return blocks.empty() ? std::nullopt : std::optional(blocks);
 }
@@ -211,6 +240,8 @@ void response(std::string_view request_id, std::string_view data) {
     std::int64_t value = 0; const auto begin = i;
     while (i < json.size() && json[i] >= '0' && json[i] <= '9') { if (value > (INT64_MAX - (json[i] - '0')) / 10) return std::nullopt; value = value * 10 + (json[i++] - '0'); }
     if (i == begin) return std::nullopt;
+    while (i < json.size() && std::isspace(static_cast<unsigned char>(json[i])) != 0) ++i;
+    if (i != json.size() && json[i] != ',' && json[i] != '}') return std::nullopt;
     return negative ? -value : value;
 }
 
@@ -226,13 +257,19 @@ void response(std::string_view request_id, std::string_view data) {
 
 [[nodiscard]] std::optional<std::int64_t> iso_utc_epoch(std::string_view value) {
     // Host-generated values are canonical UTC ISO 8601 (`YYYY-MM-DDTHH:MM:SS+00:00`).
-    if (value.size() < 19U || value[4] != '-' || value[7] != '-' || value[10] != 'T' || value[13] != ':' || value[16] != ':') return std::nullopt;
+    if (value.size() != 25U || value.substr(19) != "+00:00" || value[4] != '-' || value[7] != '-' ||
+        value[10] != 'T' || value[13] != ':' || value[16] != ':') return std::nullopt;
     const auto integer = [&](std::size_t at, std::size_t count) -> std::optional<int> {
         int result = 0; for (std::size_t i = 0; i < count; ++i) { const char c = value[at + i]; if (c < '0' || c > '9') return std::nullopt; result = result * 10 + c - '0'; } return result;
     };
     const auto year = integer(0, 4); const auto month = integer(5, 2); const auto day = integer(8, 2);
     const auto hour = integer(11, 2); const auto minute = integer(14, 2); const auto second = integer(17, 2);
-    if (!year || !month || !day || !hour || !minute || !second || *month < 1 || *month > 12 || *day < 1 || *day > 31 || *hour > 23 || *minute > 59 || *second > 59) return std::nullopt;
+    if (!year || !month || !day || !hour || !minute || !second || *year < 1970 || *month < 1 ||
+        *month > 12 || *day < 1 || *hour > 23 || *minute > 59 || *second > 59) return std::nullopt;
+    constexpr int kDaysInMonth[]{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const bool leap = (*year % 4 == 0 && *year % 100 != 0) || *year % 400 == 0;
+    const int maximum_day = *month == 2 && leap ? 29 : kDaysInMonth[*month - 1];
+    if (*day > maximum_day) return std::nullopt;
     int adjusted_year = *year - (*month <= 2 ? 1 : 0);
     const int era = (adjusted_year >= 0 ? adjusted_year : adjusted_year - 399) / 400;
     const unsigned yoe = static_cast<unsigned>(adjusted_year - era * 400);
@@ -245,6 +282,10 @@ void response(std::string_view request_id, std::string_view data) {
 [[nodiscard]] std::optional<pocket_locator::time::ZoneTable> parse_zone_table(std::string_view json, std::string_view expected_name) {
     const auto object = json_object(json, "timezone_table");
     if (!object) return std::nullopt;
+    static constexpr std::array<std::string_view, 7> kZoneKeys{
+        "zone_name", "generated_at", "expires_at", "expiry_year", "initial_offset_seconds",
+        "initial_abbreviation", "transitions"};
+    if (!pocket_locator::usb::object_has_exact_keys(*object, kZoneKeys)) return std::nullopt;
     pocket_locator::time::ZoneTable table{};
     const auto name = json_string(*object, "zone_name");
     const auto generated = json_string(*object, "generated_at");
@@ -270,17 +311,24 @@ void response(std::string_view request_id, std::string_view data) {
     if (open == std::string_view::npos || !close) return std::nullopt;
     std::size_t cursor = open + 1U;
     while (cursor < *close) {
-        const auto begin = object->find('{', cursor);
-        if (begin == std::string_view::npos || begin >= *close) break;
+        while (cursor < *close && std::isspace(static_cast<unsigned char>((*object)[cursor])) != 0) ++cursor;
+        if (cursor == *close) break;
+        if ((*object)[cursor] != '{') return std::nullopt;
+        const auto begin = cursor;
         const auto end = matching_delimiter(*object, begin, '{', '}');
         if (!end || *end > *close) return std::nullopt;
         const auto item = object->substr(begin, *end - begin + 1U);
+        static constexpr std::array<std::string_view, 3> kTransitionKeys{
+            "utc_epoch", "offset_seconds", "abbreviation"};
+        if (!pocket_locator::usb::object_has_exact_keys(item, kTransitionKeys)) return std::nullopt;
         const auto at = json_signed64(item, "utc_epoch");
         const auto offset = json_signed64(item, "offset_seconds");
         const auto abbr = json_string(item, "abbreviation");
         if (!at || !offset || !abbr || *offset < INT32_MIN || *offset > INT32_MAX) return std::nullopt;
         table.transitions.push_back({*at, static_cast<std::int32_t>(*offset), *abbr});
         cursor = *end + 1U;
+        while (cursor < *close && std::isspace(static_cast<unsigned char>((*object)[cursor])) != 0) ++cursor;
+        if (cursor < *close && (*object)[cursor++] != ',') return std::nullopt;
     }
     return pocket_locator::time::validate(table) == pocket_locator::time::ZoneTableError::None ? std::optional(table) : std::nullopt;
 }
@@ -288,6 +336,15 @@ void response(std::string_view request_id, std::string_view data) {
 [[nodiscard]] std::optional<pocket_locator::config::Settings> config_from_request(std::string_view json) {
     using pocket_locator::app::GnssMode;
     auto config = pocket_locator::config::factory_defaults();
+    static constexpr std::array<std::string_view, 15> kActualConfigKeys{
+        "schema_version", "top_template", "bottom_blocks", "timezone", "clock_24h",
+        "show_seconds", "date_format", "gnss_mode", "tracking_interval_seconds",
+        "acquisition_timeout_seconds", "dim_deadline_seconds", "shutdown_deadline_seconds",
+        "normal_brightness_percent", "dim_brightness_percent", "timezone_table"};
+    if (!pocket_locator::usb::object_has_exact_keys(json, kActualConfigKeys) ||
+        json_unsigned(json, "schema_version") != pocket_locator::config::kCurrentSchemaVersion) {
+        return std::nullopt;
+    }
     const auto zone = json_string(json, "timezone");
     const auto mode = json_string(json, "gnss_mode");
     const auto top_template = json_string(json, "top_template");
@@ -335,6 +392,7 @@ void render(pocket_locator::display::Hd44780& lcd, pocket_locator::app::CheckSes
             const pocket_locator::board::BatteryReading& battery, bool charging,
             const pocket_locator::config::Settings& settings, pocket_locator::app::State& last_state,
             std::string& last_grid, std::string& last_bottom, const std::optional<locator::CurrentFix>& latest_fix,
+            std::uint64_t latest_fix_at_ms, std::uint64_t now, bool factory_reset_failed,
             bool& timezone_refresh_required) {
     const auto state = session.state();
     const bool active = state == pocket_locator::app::State::Acquiring || state == pocket_locator::app::State::DisplayFix ||
@@ -350,8 +408,30 @@ void render(pocket_locator::display::Hd44780& lcd, pocket_locator::app::CheckSes
         lcd.set_backlight_percent(settings.normal_brightness);
     }
     std::string bottom;
+    if (factory_reset_failed) {
+        bottom = "CONNECT USB";
+        if (state != last_state || bottom != last_bottom) {
+            lcd.write_rows("RESET FAILED", bottom);
+            last_state = state;
+            last_grid.clear();
+            last_bottom = bottom;
+        }
+        return;
+    }
+    if (const auto countdown = session.factory_reset_countdown_seconds(now)) {
+        bottom = "RESET IN " + std::to_string(*countdown) + " SEC";
+        if (state != last_state || session.displayed_grid() != last_grid || bottom != last_bottom) {
+            lcd.write_rows("HOLD BOTH KEYS", bottom);
+            last_state = state;
+            last_grid = session.displayed_grid();
+            last_bottom = bottom;
+        }
+        return;
+    }
     if ((state == pocket_locator::app::State::DisplayFix || state == pocket_locator::app::State::Dimmed) && latest_fix) {
-        const auto screen = pocket_locator::display::format_fix_screen(settings, session.displayed_grid(), *latest_fix, battery.percent, charging);
+        const auto elapsed_seconds = now >= latest_fix_at_ms ? (now - latest_fix_at_ms) / 1'000U : 0U;
+        const auto screen = pocket_locator::display::format_fix_screen(
+            settings, session.displayed_grid(), *latest_fix, battery.percent, charging, elapsed_seconds);
         bottom = screen.bottom_row;
         timezone_refresh_required = screen.timezone_refresh_required;
     }
@@ -370,9 +450,12 @@ void render(pocket_locator::display::Hd44780& lcd, pocket_locator::app::CheckSes
 
 int main() {
     using namespace pocket_locator;
-    stdio_init_all();
     board::PowerHold power;
     power.init();
+    bool usb_stdio_active = false;
+    if (power.usb_present()) {
+        usb_stdio_active = stdio_usb_init();
+    }
     board::Buttons buttons;
     buttons.init();
     board::BatteryAdc battery;
@@ -390,15 +473,33 @@ int main() {
     std::string last_grid;
     std::string last_bottom;
     std::optional<locator::CurrentFix> latest_fix;
+    std::uint64_t latest_fix_at_ms = 0;
     bool timezone_refresh_required = false;
+    bool factory_reset_failed = false;
     bool last_gnss = false;
     bool power_held = false;
+    board::BatteryReading battery_reading{};
+    bool battery_read_pending = false;
+    std::uint64_t battery_read_started_ms = 0;
+    std::uint64_t last_battery_read_ms = 0;
+    constexpr std::uint64_t kBatterySampleIntervalMs = 1'000;
+    constexpr std::uint64_t kBatterySettleMs =
+        (board::kBatteryDividerSettleUs + 999U) / 1'000U;
     watchdog_enable(8'000, true);
 
     while (true) {
         const auto now = now_ms();
         watchdog_update();
-        auto update = session.set_usb_present(power.usb_present(), now);
+        const bool usb_present = power.usb_present();
+        if (usb_present != usb_stdio_active) {
+            if (usb_present) {
+                usb_stdio_active = stdio_usb_init();
+            } else {
+                (void)stdio_usb_deinit();
+                usb_stdio_active = false;
+            }
+        }
+        auto update = session.set_usb_present(usb_present, now);
         const auto merge = [](app::Update& target, const app::Update& next) {
             target.display_changed = target.display_changed || next.display_changed;
             target.power_released = target.power_released || next.power_released;
@@ -417,11 +518,19 @@ int main() {
             gnss.set_enabled(session.gnss_is_active());
             last_gnss = session.gnss_is_active();
         }
-        if (const auto fix = gnss.poll(); fix.has_value()) {
+        const auto gnss_update = gnss.poll();
+        if (gnss_update.invalid_fix && !gnss_update.invalid_after_fix) {
+            merge(update, session.invalid_fix(now));
+        }
+        if (const auto& fix = gnss_update.fix; fix.has_value()) {
             latest_fix = fix;
+            latest_fix_at_ms = now;
             if (const auto grid = locator::maidenhead_6(fix->position.latitude_degrees, fix->position.longitude_degrees); grid) {
                 merge(update, session.valid_fix(*grid, now));
             }
+        }
+        if (gnss_update.invalid_after_fix) {
+            merge(update, session.invalid_fix(now));
         }
         if (session.state() == app::State::UsbIdle || session.state() == app::State::Off || session.state() == app::State::PressCheck) {
             latest_fix.reset();
@@ -431,17 +540,17 @@ int main() {
             const auto frame = framer.push(static_cast<char>(character));
             if (!frame) continue;
             if (frame->kind == usb::FrameKind::TooLarge) {
-                std::printf("%s\n", usb::error_response("", usb::ErrorCode::MessageTooLarge).c_str());
+                std::printf("%s", usb::error_response("", usb::ErrorCode::MessageTooLarge).c_str());
                 continue;
             }
             const auto request = usb::parse_request(frame->payload);
             if (!request.request) {
-                std::printf("%s\n", usb::error_response("", *request.error).c_str());
+                std::printf("%s", usb::error_response("", *request.error).c_str());
                 continue;
             }
             const auto& request_value = *request.request;
             if (request_value.protocol_version != usb::kProtocolVersion) {
-                std::printf("%s\n", usb::error_response(request_value.request_id, usb::ErrorCode::UnsupportedProtocol).c_str());
+                std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::UnsupportedProtocol).c_str());
                 continue;
             }
             switch (request_value.command) {
@@ -452,14 +561,15 @@ int main() {
                 case usb::Command::GetConfig:
                     response(request_value.request_id, config_json(settings)); break;
                 case usb::Command::GetDiagnostics: {
-                    const auto reading = battery.read();
-                    const bool session_active = session.state() == app::State::Acquiring || session.state() == app::State::DisplayFix ||
-                                                session.state() == app::State::Dimmed || session.state() == app::State::NoGps;
+                    const bool session_active = session_is_active(session.state());
                     std::string diagnostics =
-                             "{\"config_crc_healthy\":" + std::string(loaded.crc_healthy ? "true" : "false") +
-                                 ",\"battery_adc\":" + std::to_string(reading.raw) + ",\"battery_level\":" +
-                                 std::to_string(reading.percent) + ",\"battery_millivolts\":" + std::to_string(reading.millivolts) +
-                                 ",\"onboard_temperature_celsius\":" + std::to_string(reading.temperature_centi_celsius / 100) +
+                             "{\"config_schema_version\":" + std::to_string(settings.schema_version) +
+                                 ",\"config_crc_healthy\":" + std::string(loaded.crc_healthy ? "true" : "false") +
+                                 ",\"config_source\":\"" +
+                                 (loaded.used_factory_defaults ? "safe_factory_defaults" : "flash") + "\"" +
+                                 ",\"battery_adc\":" + std::to_string(battery_reading.raw) + ",\"battery_level\":" +
+                                 std::to_string(battery_reading.percent) + ",\"battery_millivolts\":" + std::to_string(battery_reading.millivolts) +
+                                 ",\"onboard_temperature_celsius\":" + std::to_string(battery_reading.temperature_centi_celsius / 100) +
                                  ",\"usb_present\":" +
                                  std::string(power.usb_present() ? "true" : "false") + ",\"gnss_state\":\"" +
                                  (gnss.enabled() ? "active" : "off") + "\",\"timezone_refresh_required\":" +
@@ -476,30 +586,58 @@ int main() {
                 }
                 case usb::Command::ValidateConfig:
                 case usb::Command::SetConfig: {
-                    const auto candidate = config_from_request(request_value.raw_json);
+                    static constexpr std::array<std::string_view, 4> kSetRequestKeys{
+                        "protocol_version", "request_id", "command", "config"};
+                    if (!usb::object_has_exact_keys(request_value.raw_json, kSetRequestKeys)) {
+                        std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::InvalidField).c_str());
+                        break;
+                    }
+                    const auto config_object = json_object(request_value.raw_json, "config");
+                    const auto candidate = config_object ? config_from_request(*config_object) : std::nullopt;
                     if (!candidate) {
-                        std::printf("%s\n", usb::error_response(request_value.request_id, usb::ErrorCode::InvalidField).c_str());
+                        std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::InvalidField).c_str());
                         break;
                     }
                     if (request_value.command == usb::Command::SetConfig) {
-                        if (flash.write(*candidate) != config::ValidationError::None) {
-                            std::printf("%s\n", usb::error_response(request_value.request_id, usb::ErrorCode::InvalidField).c_str());
+                        if (session_is_active(session.state())) {
+                            std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::Busy).c_str());
                             break;
                         }
-                        settings = *candidate;
+                        if (flash.write(*candidate) != config::ValidationError::None) {
+                            std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::StorageError).c_str());
+                            break;
+                        }
                         loaded = flash.load();
+                        if (!loaded.crc_healthy || config::crc32(loaded.settings) != config::crc32(*candidate)) {
+                            std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::StorageError).c_str());
+                            break;
+                        }
+                        settings = loaded.settings;
+                        timezone_refresh_required = false;
                         if (session.state() == app::State::UsbIdle) {
                             session = app::CheckSession(session_settings(settings));
                             (void)session.set_usb_present(power.usb_present(), now);
                         }
                     }
-                    response(request_value.request_id, request_value.command == usb::Command::SetConfig ? config_json(*candidate) : "{\"valid\":true}");
+                    response(request_value.request_id, request_value.command == usb::Command::SetConfig ? config_json(settings) : "{\"valid\":true}");
                     break;
                 }
                 case usb::Command::FactoryReset:
-                    (void)flash.factory_reset();
-                    settings = config::factory_defaults();
+                    if (session_is_active(session.state())) {
+                        std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::Busy).c_str());
+                        break;
+                    }
+                    if (flash.factory_reset() != config::ValidationError::None) {
+                        std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::StorageError).c_str());
+                        break;
+                    }
                     loaded = flash.load();
+                    if (!loaded.crc_healthy) {
+                        std::printf("%s", usb::error_response(request_value.request_id, usb::ErrorCode::StorageError).c_str());
+                        break;
+                    }
+                    settings = loaded.settings;
+                    timezone_refresh_required = false;
                     if (session.state() == app::State::UsbIdle) {
                         session = app::CheckSession(session_settings(settings));
                         (void)session.set_usb_present(power.usb_present(), now);
@@ -514,13 +652,32 @@ int main() {
             }
         }
 
-        const auto reading = battery.read();
-        render(lcd, session, reading, power.charger_active(), settings, last_state, last_grid, last_bottom, latest_fix,
-               timezone_refresh_required);
         if (update.factory_reset_requested) {
-            (void)flash.factory_reset();
-            watchdog_reboot(0, 0, 0);
+            const auto reset_status = flash.factory_reset();
+            const auto reset_loaded = flash.load();
+            const auto defaults = config::factory_defaults();
+            const bool verified = reset_status == config::ValidationError::None &&
+                                  reset_loaded.crc_healthy && !reset_loaded.used_factory_defaults &&
+                                  config::crc32(reset_loaded.settings) == config::crc32(defaults);
+            const auto action = app::reset_storage_action(verified);
+            if (action == app::ResetStorageAction::Reboot) {
+                watchdog_reboot(0, 0, 0);
+            } else {
+                factory_reset_failed = true;
+            }
         }
+        if (!battery_read_pending &&
+            (last_battery_read_ms == 0 || now >= last_battery_read_ms + kBatterySampleIntervalMs)) {
+            battery.begin_read();
+            battery_read_pending = true;
+            battery_read_started_ms = now;
+        } else if (battery_read_pending && now >= battery_read_started_ms + kBatterySettleMs) {
+            battery_reading = battery.finish_read();
+            battery_read_pending = false;
+            last_battery_read_ms = now;
+        }
+        render(lcd, session, battery_reading, power.charger_active(), settings, last_state, last_grid, last_bottom, latest_fix,
+               latest_fix_at_ms, now, factory_reset_failed, timezone_refresh_required);
         if (update.power_released) {
             gnss.set_enabled(false);
             latest_fix.reset();

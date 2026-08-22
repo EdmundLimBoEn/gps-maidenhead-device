@@ -74,11 +74,16 @@ def test_device_payload_rejects_missing_timezone_table() -> None:
 def test_device_payload_replaces_a_stale_table_after_zone_edit() -> None:
     config = factory_config()
     config.timezone = "America/New_York"
-    config = DeviceConfig.from_dict(config.to_device_dict(generated_at=datetime(2026, 8, 19, tzinfo=UTC)))
+    config = DeviceConfig.from_dict(
+        config.to_device_dict(generated_at=datetime(2026, 8, 19, tzinfo=UTC))
+    )
     config.timezone = "Asia/Singapore"
-    assert config.to_device_dict(generated_at=datetime(2026, 8, 19, tzinfo=UTC))["timezone_table"][
-        "zone_name"
-    ] == "Asia/Singapore"
+    assert (
+        config.to_device_dict(generated_at=datetime(2026, 8, 19, tzinfo=UTC))["timezone_table"][
+            "zone_name"
+        ]
+        == "Asia/Singapore"
+    )
 
 
 def test_reorder_blocks_moves_item_and_keeps_new_selection() -> None:
@@ -97,3 +102,29 @@ def test_timezone_table_abbreviation_must_not_be_empty() -> None:
     payload["timezone_table"]["initial_abbreviation"] = ""
     with pytest.raises(ConfigError, match="abbreviation"):
         DeviceConfig.from_dict(payload).validate_device_payload()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("tracking_interval_seconds", 61),
+        ("acquisition_timeout_seconds", 601),
+        ("shutdown_deadline_seconds", 601),
+        ("normal_brightness_percent", True),
+    ],
+)
+def test_host_limits_match_firmware(field: str, value: object) -> None:
+    config = factory_config()
+    setattr(config, field, value)
+    with pytest.raises(ConfigError):
+        config.validate()
+
+
+def test_structural_layout_rules_match_firmware() -> None:
+    config = factory_config()
+    config.bottom_blocks = [DisplayBlock("space", "")]
+    with pytest.raises(ConfigError, match="space"):
+        config.validate()
+    config.bottom_blocks = [DisplayBlock("battery", "ignored")]
+    with pytest.raises(ConfigError, match="battery"):
+        config.validate()

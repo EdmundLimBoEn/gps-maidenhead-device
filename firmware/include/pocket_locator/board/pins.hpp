@@ -6,7 +6,8 @@
 namespace pocket_locator::board {
 
 // Board revision A pin assignment.  All MCU-facing LCD signals are 3V3 and
-// must feed the 74AHCT245; the LCD module itself is supplied from 5V_LCD.
+// must feed the 3.3 V A-side of the SN74LVC8T245PWR; the LCD module and
+// translator B-side are supplied from 5V_LCD.
 // Override individual values with POCKET_LOCATOR_PIN_* CMake definitions for
 // a bring-up board without changing application code.
 struct PinMap {

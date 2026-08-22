@@ -1,2 +1,1 @@
-unit_serial,pcb_revision,enclosure_revision,firmware_revision,session,utc_time,battery_adc_before,battery_adc_after,fix_seconds,completed,notes
-
+unit_serial,pcb_revision,enclosure_revision,firmware_revision,utc_date,operator,session,is_reserve,ambient_c,gnss_mode,brightness_pct,dim_deadline_s,shutdown_deadline_s,utc_time,battery_adc_before,battery_adc_after,fix_seconds,completed,pass,evidence_hash,notes

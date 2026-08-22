@@ -9,6 +9,7 @@ using pocket_locator::app::Backlight;
 using pocket_locator::app::Button;
 using pocket_locator::app::CheckSession;
 using pocket_locator::app::GnssMode;
+using pocket_locator::app::ResetStorageAction;
 using pocket_locator::app::SessionSettings;
 using pocket_locator::app::State;
 
@@ -64,6 +65,24 @@ TEST(single_fix_stops_gnss_and_shuts_down_at_original_deadline) {
     const auto shutdown = session.tick(120'000);
     REQUIRE(shutdown.power_released);
     REQUIRE_EQ(session.state(), State::Off);
+}
+
+TEST(first_valid_fix_pulses_backlight_then_restores_deadline_brightness) {
+    CheckSession session = accepted_session();
+    session.valid_fix("OJ11XH", 10'000);
+
+    REQUIRE_EQ(session.backlight(), Backlight::Off);
+    session.tick(10'119);
+    REQUIRE_EQ(session.backlight(), Backlight::Off);
+    session.tick(10'120);
+    REQUIRE_EQ(session.backlight(), Backlight::Normal);
+
+    CheckSession late_fix = accepted_session();
+    late_fix.valid_fix("OJ11XH", 60'000);
+    REQUIRE_EQ(late_fix.state(), State::Dimmed);
+    REQUIRE_EQ(late_fix.backlight(), Backlight::Off);
+    late_fix.tick(60'120);
+    REQUIRE_EQ(late_fix.backlight(), Backlight::Dim);
 }
 
 TEST(tracking_requires_two_consecutive_new_grids_and_respects_render_interval) {
@@ -146,10 +165,28 @@ TEST(two_button_hold_requests_factory_reset_without_triggering_off) {
     session.button_down(Button::Locate, 3'000);
     session.button_down(Button::Off, 3'000);
 
+    REQUIRE_EQ(session.factory_reset_countdown_seconds(3'000), std::optional<std::uint8_t>{5});
+    REQUIRE_EQ(session.factory_reset_countdown_seconds(7'001), std::optional<std::uint8_t>{1});
     session.tick(4'000);
     REQUIRE_EQ(session.state(), State::DisplayFix);
     const auto reset = session.tick(8'000);
     REQUIRE(reset.factory_reset_requested);
     REQUIRE_EQ(session.state(), State::FactoryReset);
     REQUIRE(!session.tick(8'100).factory_reset_requested);
+}
+
+TEST(repeated_locate_press_cannot_extend_session_deadlines) {
+    CheckSession session = accepted_session();
+    session.valid_fix("OJ11XH", 2'000);
+    session.button_down(Button::Locate, 50'000);
+    session.button_up(Button::Locate, 50'500);
+
+    REQUIRE(session.tick(120'000).power_released);
+    REQUIRE_EQ(session.state(), State::Off);
+}
+
+TEST(factory_reset_reboots_only_after_verified_storage_success) {
+    REQUIRE_EQ(pocket_locator::app::reset_storage_action(true), ResetStorageAction::Reboot);
+    REQUIRE_EQ(
+        pocket_locator::app::reset_storage_action(false), ResetStorageAction::ShowFailure);
 }

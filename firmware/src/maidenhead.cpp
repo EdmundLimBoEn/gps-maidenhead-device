@@ -9,17 +9,9 @@
 namespace locator {
 namespace {
 
-constexpr double kFieldLongitudeDegrees = 20.0;
-constexpr double kFieldLatitudeDegrees = 10.0;
-constexpr double kSquareLongitudeDegrees = 2.0;
-constexpr double kSquareLatitudeDegrees = 1.0;
-constexpr double kSubsquareLongitudeDegrees = kSquareLongitudeDegrees / 24.0;
-constexpr double kSubsquareLatitudeDegrees = kSquareLatitudeDegrees / 24.0;
-
-int bounded_floor_index(double value, double unit, int count) {
-    const auto raw = static_cast<int>(std::floor(value / unit));
-    return std::clamp(raw, 0, count - 1);
-}
+constexpr int kUnitsPerField = 240;
+constexpr int kUnitsPerSquare = 24;
+constexpr int kWorldUnits = 18 * kUnitsPerField;
 
 }  // namespace
 
@@ -36,20 +28,19 @@ std::optional<std::string> maidenhead_6(double latitude_degrees, double longitud
                                 ? std::nextafter(90.0, -std::numeric_limits<double>::infinity())
                                 : latitude_degrees;
     const double longitude = longitude_degrees == 180.0 ? -180.0 : longitude_degrees;
-    const double adjusted_latitude = latitude + 90.0;
-    const double adjusted_longitude = longitude + 180.0;
-
-    const int longitude_field = bounded_floor_index(adjusted_longitude, kFieldLongitudeDegrees, 18);
-    const int latitude_field = bounded_floor_index(adjusted_latitude, kFieldLatitudeDegrees, 18);
-    const double longitude_after_field = adjusted_longitude - longitude_field * kFieldLongitudeDegrees;
-    const double latitude_after_field = adjusted_latitude - latitude_field * kFieldLatitudeDegrees;
-    const int longitude_square = bounded_floor_index(longitude_after_field, kSquareLongitudeDegrees, 10);
-    const int latitude_square = bounded_floor_index(latitude_after_field, kSquareLatitudeDegrees, 10);
-    const double longitude_after_square = longitude_after_field - longitude_square * kSquareLongitudeDegrees;
-    const double latitude_after_square = latitude_after_field - latitude_square * kSquareLatitudeDegrees;
-    const int longitude_subsquare =
-        bounded_floor_index(longitude_after_square, kSubsquareLongitudeDegrees, 24);
-    const int latitude_subsquare = bounded_floor_index(latitude_after_square, kSubsquareLatitudeDegrees, 24);
+    // Convert directly to the finest six-character lattice. This avoids
+    // accumulating floating-point error while repeatedly subtracting field
+    // and square widths at exact subsquare boundaries.
+    const int longitude_units = std::clamp(
+        static_cast<int>(std::floor((longitude + 180.0) * 12.0)), 0, kWorldUnits - 1);
+    const int latitude_units = std::clamp(
+        static_cast<int>(std::floor((latitude + 90.0) * 24.0)), 0, kWorldUnits - 1);
+    const int longitude_field = longitude_units / kUnitsPerField;
+    const int latitude_field = latitude_units / kUnitsPerField;
+    const int longitude_square = (longitude_units / kUnitsPerSquare) % 10;
+    const int latitude_square = (latitude_units / kUnitsPerSquare) % 10;
+    const int longitude_subsquare = longitude_units % kUnitsPerSquare;
+    const int latitude_subsquare = latitude_units % kUnitsPerSquare;
 
     std::string result(6, 'A');
     result[0] = static_cast<char>('A' + longitude_field);

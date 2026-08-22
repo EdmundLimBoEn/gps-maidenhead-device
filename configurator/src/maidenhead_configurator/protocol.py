@@ -37,6 +37,10 @@ class Client:
     def request(self, command: str, **payload: Any) -> Any:
         if command not in COMMANDS:
             raise ProtocolError("unknown_command", command)
+        if {"protocol_version", "request_id", "command"} & payload.keys():
+            raise ProtocolError(
+                "invalid_payload", "payload cannot replace protocol envelope fields"
+            )
         request_id = str(self.next_request_id)
         self.next_request_id += 1
         request = {
@@ -49,6 +53,8 @@ class Client:
         if len(encoded) > MAX_MESSAGE_BYTES:
             raise ProtocolError("message_too_large", "request exceeds protocol limit")
         response = self.transport.transact(request)
+        if not isinstance(response, dict):
+            raise ProtocolError("invalid_response", "device response must be an object")
         if response.get("request_id") != request_id:
             raise ProtocolError("request_id_mismatch", "response does not match request")
         if response.get("ok") is not True:

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pocket_locator/display/format.hpp"
 
+#include <algorithm>
 #include <array>
+#include <climits>
 #include <cstdio>
 
 namespace pocket_locator::display {
@@ -82,8 +84,10 @@ struct Civil { int year; unsigned month; unsigned day; unsigned hour; unsigned m
 }  // namespace
 
 FormattedFixScreen format_fix_screen(const config::Settings& settings, std::string_view grid, const locator::CurrentFix& fix,
-                                     std::uint8_t battery_percent, bool charging) {
-    const auto utc = epoch(fix);
+                                     std::uint8_t battery_percent, bool charging, std::uint64_t elapsed_seconds) {
+    const auto base_utc = epoch(fix);
+    const auto maximum_elapsed = static_cast<std::uint64_t>(INT64_MAX - base_utc);
+    const auto utc = base_utc + static_cast<std::int64_t>(std::min(elapsed_seconds, maximum_elapsed));
     const auto offset = time::offset_at(settings.zone_table, utc);
     const Civil local = civil_from_epoch(utc + offset.offset_seconds);
     std::string bottom;

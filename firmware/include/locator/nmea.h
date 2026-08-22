@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <cstdint>
+#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -72,6 +73,25 @@ struct ParseResult {
 // missing checksum.
 [[nodiscard]] ParseResult parse_nmea_sentence(std::string_view line);
 
+enum class NmeaFrameKind { Complete, Overlong };
+
+struct NmeaFrame {
+    NmeaFrameKind kind{NmeaFrameKind::Complete};
+    std::string payload{};
+};
+
+class NmeaLineFramer {
+public:
+    explicit NmeaLineFramer(std::size_t maximum_bytes = 127) : maximum_bytes_(maximum_bytes) {}
+    [[nodiscard]] std::optional<NmeaFrame> push(char byte);
+    void reset();
+
+private:
+    std::size_t maximum_bytes_;
+    bool discarding_{false};
+    std::string buffer_{};
+};
+
 struct CurrentFix {
     Position position{};
     UtcTime utc_time{};
@@ -80,16 +100,26 @@ struct CurrentFix {
     std::uint8_t satellites_used{0};
 };
 
+struct FixIngestResult {
+    std::optional<CurrentFix> fix{};
+    // True means the receiver explicitly reported no fix, or same-epoch
+    // RMC/GGA data contradicted each other. Tracking candidates must be reset.
+    bool invalid_fix{false};
+};
+
 // Requires matching, receiver-valid RMC and GGA reports. It prevents a valid
 // status sentence from being combined with stale or contradictory position
 // data from another epoch.
 class FixAccumulator {
   public:
-    [[nodiscard]] std::optional<CurrentFix> ingest(const NmeaSentence& sentence);
+    [[nodiscard]] FixIngestResult ingest(const NmeaSentence& sentence);
     void clear();
 
   private:
+    void clear_pending();
     std::optional<NmeaSentence> latest_rmc_{};
+    std::optional<NmeaSentence> latest_gga_{};
+    std::optional<CurrentFix> last_emitted_fix_{};
 };
 
 }  // namespace locator

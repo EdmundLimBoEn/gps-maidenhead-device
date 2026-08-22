@@ -6,7 +6,8 @@
 namespace pocket_locator::time {
 namespace {
 
-constexpr std::int32_t kMaximumOffsetSeconds = 24 * 60 * 60;
+constexpr std::int32_t kMinimumOffsetSeconds = -12 * 60 * 60;
+constexpr std::int32_t kMaximumOffsetSeconds = 14 * 60 * 60;
 constexpr std::size_t kMaximumZoneNameBytes = 64;
 constexpr std::size_t kMaximumAbbreviationBytes = 8;
 
@@ -30,7 +31,7 @@ ZoneTableError validate(const ZoneTable& table) {
     if (table.expires_at_epoch_seconds <= table.generated_at_epoch_seconds) {
         return ZoneTableError::InvalidLifetime;
     }
-    if (table.initial_offset_seconds < -kMaximumOffsetSeconds ||
+    if (table.initial_offset_seconds < kMinimumOffsetSeconds ||
         table.initial_offset_seconds > kMaximumOffsetSeconds) {
         return ZoneTableError::InvalidOffset;
     }
@@ -45,7 +46,7 @@ ZoneTableError validate(const ZoneTable& table) {
         if (transition.utc_epoch_seconds >= table.expires_at_epoch_seconds) {
             return ZoneTableError::TransitionOutsideLifetime;
         }
-        if (transition.offset_seconds < -kMaximumOffsetSeconds ||
+        if (transition.offset_seconds < kMinimumOffsetSeconds ||
             transition.offset_seconds > kMaximumOffsetSeconds) {
             return ZoneTableError::InvalidOffset;
         }

@@ -40,11 +40,11 @@ TEST(nmea_valid_pair_yields_current_fix) {
     REQUIRE_EQ(gga.sentence->kind, NmeaKind::gga);
 
     locator::FixAccumulator accumulator;
-    REQUIRE(!accumulator.ingest(*rmc.sentence).has_value());
-    const auto fix = accumulator.ingest(*gga.sentence);
-    REQUIRE(fix.has_value());
-    REQUIRE_EQ(fix->utc_date.year, 1994);
-    REQUIRE_EQ(fix->utc_time.hour, 12);
+    REQUIRE(!accumulator.ingest(*rmc.sentence).fix.has_value());
+    const auto result = accumulator.ingest(*gga.sentence);
+    REQUIRE(result.fix.has_value());
+    REQUIRE_EQ(result.fix->utc_date.year, 1994);
+    REQUIRE_EQ(result.fix->utc_time.hour, 12);
 }
 
 TEST(nmea_rejects_bad_checksum_missing_checksum_and_contradictory_pair) {
@@ -62,8 +62,8 @@ TEST(nmea_rejects_bad_checksum_missing_checksum_and_contradictory_pair) {
     REQUIRE(rmc.valid());
     REQUIRE(gga_wrong_time.valid());
     locator::FixAccumulator accumulator;
-    REQUIRE(!accumulator.ingest(*rmc.sentence).has_value());
-    REQUIRE(!accumulator.ingest(*gga_wrong_time.sentence).has_value());
+    REQUIRE(!accumulator.ingest(*rmc.sentence).fix.has_value());
+    REQUIRE(!accumulator.ingest(*gga_wrong_time.sentence).fix.has_value());
 }
 
 TEST(layout_pads_short_rows_and_rejects_overflow_or_unsupported_bytes) {

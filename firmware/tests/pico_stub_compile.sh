@@ -8,6 +8,8 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 stub_include="$repo_root/firmware/tests/pico_stub/include"
 firmware_include="$repo_root/firmware/include"
+stub_build=$(mktemp -d)
+trap 'rm -rf "$stub_build"' EXIT
 
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -fsyntax-only \
   -I"$stub_include" -I"$firmware_include" \
@@ -27,3 +29,18 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -fsyntax-only \
   "$repo_root/firmware/src/gnss/uart_gnss.cpp" \
   "$repo_root/firmware/src/storage/flash_config_store.cpp" \
   "$repo_root/firmware/src/device/main.cpp"
+
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+  -I"$stub_include" -I"$firmware_include" \
+  "$repo_root/firmware/tests/battery_stub_test.cpp" \
+  "$repo_root/firmware/src/board/rp2040_board.cpp" \
+  -o "$stub_build/battery_stub_test"
+"$stub_build/battery_stub_test"
+
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+  -I"$stub_include" -I"$firmware_include" \
+  "$repo_root/firmware/tests/gnss_stub_test.cpp" \
+  "$repo_root/firmware/src/gnss/uart_gnss.cpp" \
+  "$repo_root/firmware/src/nmea.cpp" \
+  -o "$stub_build/gnss_stub_test"
+"$stub_build/gnss_stub_test"

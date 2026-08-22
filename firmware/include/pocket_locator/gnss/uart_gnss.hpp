@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -11,20 +9,28 @@
 
 namespace pocket_locator::gnss {
 
+// Allow the switched GNSS rail to rise before the MCU drives module I/O.
+inline constexpr std::uint32_t kGnssPowerRailSettleUs = 5'000U;
+
+struct PollResult {
+    std::optional<locator::CurrentFix> fix{};
+    bool invalid_fix{false};
+    bool invalid_after_fix{false};
+};
+
 class UartGnss {
 public:
     explicit UartGnss(board::PinMap pins = board::kDefaultPins, std::uint32_t baud = 9'600);
     void init();
     void set_enabled(bool enabled);
     [[nodiscard]] bool enabled() const { return enabled_; }
-    [[nodiscard]] std::optional<locator::CurrentFix> poll();
+    [[nodiscard]] PollResult poll();
 
 private:
     board::PinMap pins_;
     std::uint32_t baud_;
     bool enabled_{false};
-    std::array<char, 128> line_{};
-    std::size_t line_length_{0};
+    locator::NmeaLineFramer framer_{127};
     locator::FixAccumulator accumulator_{};
 };
 
